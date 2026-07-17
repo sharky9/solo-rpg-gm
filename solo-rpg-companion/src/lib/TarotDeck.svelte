@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
-
   let { open = false, onclose }: { open?: boolean; onclose?: () => void } = $props();
 
   type TarotCard = {
@@ -26,14 +24,9 @@
   const RANKS = ["Ace", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Page", "Knight", "Queen", "King"];
 
   let deck = $state<TarotCard[]>([]); // remaining; the end of the array is the top
-  let drawn = $state<TarotCard[]>([]); // draw order; last entry is on show
+  let drawn = $state<TarotCard[]>([]); // every card drawn since the last shuffle, in order
   let withReversals = $state(true);
-  let flipping = $state(false);
-
-  const timers = new Set<ReturnType<typeof setTimeout>>();
-  onDestroy(() => {
-    for (const t of timers) clearTimeout(t);
-  });
+  let spreadEl = $state<HTMLElement | null>(null);
 
   const reduced =
     typeof matchMedia !== "undefined" &&
@@ -46,7 +39,6 @@
   }
 
   function shuffle() {
-    if (flipping) return;
     const cards: TarotCard[] = [];
     MAJORS.forEach((name, i) => cards.push({ name, numeral: NUMERALS[i], reversed: false }));
     for (const suit of SUITS)
@@ -66,19 +58,17 @@
   shuffle();
 
   function draw() {
-    if (!deck.length || flipping) return;
+    if (!deck.length) return;
     const card = deck.pop()!; // result first: card and orientation pre-decided
     deck = deck;
     drawn.push(card);
-    if (!reduced) {
-      flipping = true;
-      const t = setTimeout(() => {
-        timers.delete(t);
-        flipping = false;
-      }, 420);
-      timers.add(t);
-    }
   }
+
+  // keep the newest card in view as the spread grows
+  $effect(() => {
+    void drawn.length;
+    if (spreadEl) spreadEl.scrollTop = spreadEl.scrollHeight;
+  });
 
   const current = $derived(drawn.length ? drawn[drawn.length - 1] : null);
 
@@ -116,27 +106,23 @@
         {/if}
       </button>
 
-      <div class="slot">
-        {#if current}
-          {#key drawn.length}
-            <div
-              class="card"
-              class:flip={!reduced}
-              aria-label={cardLabel(current)}
-            >
-              <div class="face" class:reversed={current.reversed}>
-                {#if current.numeral !== undefined}
-                  <span class="numeral">{current.numeral}</span>
-                  <span class="title">{current.name}</span>
+      <div class="spread" bind:this={spreadEl} aria-label="Drawn cards">
+        {#if drawn.length}
+          {#each drawn as c, i (i)}
+            <div class="card" class:flip={!reduced} aria-label={cardLabel(c)}>
+              <div class="face" class:reversed={c.reversed}>
+                {#if c.numeral !== undefined}
+                  <span class="numeral">{c.numeral}</span>
+                  <span class="title">{c.name}</span>
                 {:else}
-                  <span class="numeral">{current.rank}</span>
-                  <span class="title">of {current.suit}</span>
+                  <span class="numeral">{c.rank}</span>
+                  <span class="title">of {c.suit}</span>
                 {/if}
               </div>
             </div>
-          {/key}
+          {/each}
         {:else}
-          <div class="card placeholder"></div>
+          <span class="spread-hint">Tap the deck to draw — cards pile up here until you shuffle</span>
         {/if}
       </div>
     </div>
@@ -145,7 +131,7 @@
       {#if current}
         <span class="name">{cardLabel(current)}</span>
       {:else}
-        <span class="name muted">Tap the deck to draw</span>
+        <span class="name muted">Nothing drawn yet</span>
       {/if}
       <span class="counts">{deck.length} left · {drawn.length} drawn</span>
     </div>
@@ -166,6 +152,7 @@
     bottom: 64px;
     left: 50%;
     transform: translateX(-50%);
+    width: min(560px, calc(100vw - 24px));
     background: rgba(28, 24, 21, 0.94);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(232, 226, 213, 0.12);
@@ -180,19 +167,16 @@
 
   .table-row {
     display: flex;
-    gap: 1rem;
-    align-items: center;
-  }
-
-  .pile,
-  .card,
-  .placeholder {
-    width: 92px;
-    height: 150px;
-    border-radius: 8px;
+    gap: 0.9rem;
+    align-items: flex-start;
+    width: 100%;
   }
 
   .pile {
+    width: 92px;
+    height: 150px;
+    flex: none;
+    border-radius: 8px;
     border: 0;
     padding: 0;
     background: none;
@@ -233,13 +217,45 @@
     color: #9c9384;
     font-size: 0.8rem;
   }
-
-  .slot {
-    perspective: 700px;
+  .pile:focus-visible {
+    outline: 2px solid #c9a35c;
+    outline-offset: 3px;
   }
+
+  .spread {
+    flex: 1;
+    min-height: 150px;
+    max-height: 264px;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    border-radius: 10px;
+    border: 1.5px dashed rgba(156, 147, 132, 0.4);
+    perspective: 600px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 147, 132, 0.5) transparent;
+  }
+  .spread-hint {
+    color: #9c9384;
+    font-size: 0.82rem;
+    align-self: center;
+    text-align: center;
+    width: 100%;
+    padding: 2.6rem 0.5rem;
+    box-sizing: border-box;
+  }
+
   .card {
+    width: 56px;
+    height: 92px;
+    flex: none;
+    border-radius: 5px;
     background: #fffdf6;
-    border: 1.5px solid #b5a98e;
+    border: 1px solid #b5a98e;
     overflow: hidden;
   }
   .card .face {
@@ -249,32 +265,28 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
-    padding: 0.5rem;
+    gap: 0.15rem;
+    padding: 0.25rem;
     box-sizing: border-box;
     border: 1px solid rgba(181, 169, 142, 0.6);
-    border-radius: 6px;
-    box-shadow: inset 0 0 0 3px #fffdf6, inset 0 0 0 4px rgba(181, 169, 142, 0.35);
+    border-radius: 4px;
+    box-shadow: inset 0 0 0 2px #fffdf6, inset 0 0 0 3px rgba(181, 169, 142, 0.35);
   }
   .card .face.reversed {
     transform: rotate(180deg);
   }
-  .placeholder {
-    background: none;
-    border: 1.5px dashed rgba(156, 147, 132, 0.4);
-  }
 
   .numeral {
     font-family: Georgia, serif;
-    font-size: 1.5rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: #2a241a;
   }
   .title {
     font-family: Georgia, serif;
-    font-size: 0.8rem;
+    font-size: 0.56rem;
     text-align: center;
-    line-height: 1.25;
+    line-height: 1.2;
     color: #5c5342;
   }
 
@@ -331,13 +343,9 @@
     filter: brightness(1.08);
   }
   .shuffle:focus-visible,
-  .pile:focus-visible,
   .reversals input:focus-visible {
     outline: 2px solid #c9a35c;
     outline-offset: 2px;
-  }
-  .pile:focus-visible {
-    outline-offset: 3px;
   }
 
   .reversals {
