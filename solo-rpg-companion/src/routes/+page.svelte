@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { readFile } from "@tauri-apps/plugin-fs";
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import DiceTray from "$lib/DiceTray.svelte";
   import CoinFlip from "$lib/CoinFlip.svelte";
@@ -9,6 +9,9 @@
   import TarotDeck from "$lib/TarotDeck.svelte";
   import BookmarkRail from "$lib/BookmarkRail.svelte";
   import AudioPlayer from "$lib/AudioPlayer.svelte";
+  import ReferencePane from "$lib/ReferencePane.svelte";
+  import ReferenceFan from "$lib/ReferenceFan.svelte";
+  import { refDocName, type RefDoc } from "$lib/referenceDocs";
   import * as perf from "$lib/perf";
 
   type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
@@ -24,13 +27,87 @@
   let loadError = $state("");
   let openSeq = 0; // a newer pick supersedes any load still in flight
   let viewer: PdfViewer | undefined = $state();
+  let rail: BookmarkRail | undefined = $state();
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
   let activeTool = $state<Tool | null>(null);
+  // the reference doc shown in the pane; its failures never touch book state.
+  // While one is open, the book pane narrows to ~55% (split reader).
+  let refDoc = $state<RefDoc | null>(null);
+  let splitOpen = $derived(refDoc !== null);
+  // the paper-stack fan of this book's reference documents
+  let fanOpen = $state(false);
 
   function toggleTool(tool: Tool) {
     activeTool = activeTool === tool ? null : tool;
   }
+
+  // refit after the pane width lands — the viewer reads clientWidth directly
+  function scheduleRefit() {
+    requestAnimationFrame(() => viewer?.refit());
+  }
+
+  function openReference(doc: RefDoc) {
+    refDoc = doc;
+    scheduleRefit();
+  }
+
+  function closeReference() {
+    refDoc = null;
+    scheduleRefit();
+  }
+
+  // reselecting the open doc just dismisses the fan — no reload (R19)
+  function onFanSelect(doc: RefDoc) {
+    fanOpen = false;
+    if (doc.path !== refDoc?.path) openReference(doc);
+  }
+
+  // removing the doc that's open in the pane also closes the pane (R19)
+  function onFanRemove(path: string) {
+    if (path === refDoc?.path) closeReference();
+  }
+
+  // safety net: the split and fan can't outlive a readable book (R17). The
+  // authoritative close on book-swap happens in openBook's late-swap block;
+  // this catches any other path that drops viewerReady (same values — no fight).
+  $effect(() => {
+    if (!viewerReady && (refDoc || fanOpen)) {
+      refDoc = null;
+      fanOpen = false;
+    }
+  });
+
+  // One Escape owner (R16): dismisses exactly one layer per press — the fan
+  // first (its backdrop covers everything), then the bookmark rail's
+  // popover/rename, then the open tool drawer, then the split pane. The
+  // coordinator cancels the rail edit itself rather than letting the press
+  // propagate: a propagated Escape reaches every tool's window listener too
+  // and would dismiss two layers at once. Registered on the CAPTURE phase so
+  // it runs before those bubble-phase listeners — stopPropagation() below is
+  // what prevents a double-dismiss. (Capture isn't expressible via
+  // <svelte:window> attributes.)
+  function onEscapeCapture(e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    if (fanOpen) {
+      fanOpen = false;
+    } else if (rail?.isEditing()) {
+      rail.cancelEditing();
+    } else if (activeTool) {
+      activeTool = null;
+    } else if (splitOpen) {
+      closeReference();
+    } else {
+      return; // nothing open — the tools' listeners are gated on `open` anyway
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  onMount(() => {
+    window.addEventListener("keydown", onEscapeCapture, true);
+    return () => window.removeEventListener("keydown", onEscapeCapture, true);
+  });
 
   function toggleSpread() {
     spreadOn = !spreadOn;
@@ -59,7 +136,7 @@
     });
     if (typeof path !== "string") return;
     const seq = ++openSeq;
-    const name = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
+    const name = refDocName(path) || "Untitled";
     loadError = "";
     loading = true;
     perf.beginLoad();
@@ -78,8 +155,12 @@
     perf.mark("file-read");
 
     // late-swap: data, path, and title change together, only once the read
-    // succeeded, so the chrome never names a book that isn't loading
+    // succeeded, so the chrome never names a book that isn't loading. The fan
+    // and split belong to the outgoing book, so they close here too (R18) —
+    // a cancelled dialog or failed read above never touches them.
     viewerReady = false;
+    fanOpen = false;
+    refDoc = null;
     pdfData = bytes;
     bookPath = path;
     bookName = name;
@@ -104,7 +185,41 @@
 
 <main>
   {#if pdfData}
-    <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
+    <!-- the book viewer must never remount — its buffer is transferred to the
+         pdf.js worker, so a recreate would re-load a detached buffer and fail.
+         The split only ever changes this pane's width. -->
+    <div class="book-pane" class:split={splitOpen}>
+      <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
+      {#if viewerReady}
+        <BookmarkRail
+          bind:this={rail}
+          bookKey={bookPath}
+          currentPage={pageNum}
+          spread={spreadOn}
+          totalPages={pageTotal}
+          onjump={(p) => viewer?.goToPage(p)}
+        />
+        <!-- paper-stack: anchored to this pane's corner so it rides the divider
+             and never sits over the reference pane -->
+        <button
+          class="stack"
+          class:active={fanOpen}
+          onclick={() => (fanOpen = !fanOpen)}
+          title={fanOpen ? "Put the references away" : "Fan out the references"}
+          aria-label={fanOpen ? "Close reference documents" : "Open reference documents"}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="7" y="3" width="12" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <rect x="4" y="6.5" width="12" height="15" rx="1.5" fill="#262220" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+        </button>
+      {/if}
+    </div>
+    {#if refDoc}
+      <div class="reference-pane">
+        <ReferencePane path={refDoc.path} name={refDoc.name} onclose={closeReference} />
+      </div>
+    {/if}
     <div class="chrome top">
       <button class="quiet" onclick={openBook} title="Open another gamebook">Open</button>
       <span class="title">{bookName}</span>
@@ -160,15 +275,13 @@
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
     <AudioPlayer open={activeTool === "audio"} onclose={() => (activeTool = null)} />
-    {#if viewerReady}
-      <BookmarkRail
-        bookKey={bookPath}
-        currentPage={pageNum}
-        spread={spreadOn}
-        totalPages={pageTotal}
-        onjump={(p) => viewer?.goToPage(p)}
-      />
-    {/if}
+    <ReferenceFan
+      bookKey={bookPath}
+      open={fanOpen}
+      onselect={onFanSelect}
+      onclose={() => (fanOpen = false)}
+      onremove={onFanRemove}
+    />
   {:else}
     <div class="empty">
       {#if loading}
@@ -195,6 +308,68 @@
   main {
     position: fixed;
     inset: 0;
+  }
+
+  /* book pane: the rail's positioned ancestor, so its right-edge tabs land on
+     the divider when split. No width transition — refit() reads clientWidth
+     right after the toggle, and a mid-animation width would mis-fit. */
+  .book-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+  }
+  .book-pane.split {
+    width: 55%;
+  }
+  .reference-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 45%;
+  }
+
+  /* paper-stack icon: low-opacity chrome pinned to the book pane's corner */
+  .stack {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 0;
+    background: rgba(28, 24, 21, 0.82);
+    backdrop-filter: blur(6px);
+    color: #e8e2d5;
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s;
+    z-index: 6;
+  }
+  .stack svg {
+    width: 20px;
+    height: 20px;
+  }
+  .stack:hover,
+  .stack.active {
+    opacity: 1;
+  }
+  .stack.active {
+    color: #e4c37e;
+    background: rgba(201, 163, 92, 0.22);
+  }
+  .stack:focus-visible {
+    outline: 2px solid #c9a35c;
+    outline-offset: 2px;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stack { transition: none; }
   }
 
   .empty {

@@ -1,11 +1,10 @@
-export type BookmarkColor = "red" | "blue" | "green";
-export type Bookmark = { page: number; color: BookmarkColor; label?: string };
+export type RefDoc = { name: string; path: string };
 
-// All books' bookmarks live in one human-readable JSON file in the app data
-// dir, keyed by the book's file path. In a plain browser (dev/test) the Tauri
-// APIs are unavailable, so we fall back to localStorage.
+// Same pattern as bookmarks.ts: all books' reference docs live in one
+// human-readable JSON file in the app data dir, keyed by the book's file path.
+// localStorage fallback outside Tauri (browser dev).
 
-const FILE = "bookmarks.json";
+const FILE = "refdocs.json";
 
 async function tauriFile(): Promise<{ fs: typeof import("@tauri-apps/plugin-fs"); path: string; dir: string }> {
   const fs = await import("@tauri-apps/plugin-fs");
@@ -14,7 +13,7 @@ async function tauriFile(): Promise<{ fs: typeof import("@tauri-apps/plugin-fs")
   return { fs, path: await join(dir, FILE), dir };
 }
 
-type Store = Record<string, Bookmark[]>;
+type Store = Record<string, RefDoc[]>;
 
 async function readStore(): Promise<Store> {
   const { fs, path } = await tauriFile();
@@ -33,7 +32,17 @@ function readLocalStore(): Store {
   }
 }
 
-export async function loadBookmarks(bookKey: string): Promise<Bookmark[]> {
+/** Display name for a reference doc: file name without directories or .pdf. */
+export function refDocName(path: string): string {
+  return path.split(/[\\/]/).pop()!.replace(/\.pdf$/i, "");
+}
+
+function dedupeByPath(docs: RefDoc[]): RefDoc[] {
+  const seen = new Set<string>();
+  return docs.filter((d) => !seen.has(d.path) && seen.add(d.path));
+}
+
+export async function loadRefDocs(bookKey: string): Promise<RefDoc[]> {
   try {
     return (await readStore())[bookKey] ?? [];
   } catch {
@@ -41,7 +50,8 @@ export async function loadBookmarks(bookKey: string): Promise<Bookmark[]> {
   }
 }
 
-export async function saveBookmarks(bookKey: string, list: Bookmark[]): Promise<void> {
+export async function saveRefDocs(bookKey: string, docs: RefDoc[]): Promise<void> {
+  const list = dedupeByPath(docs);
   try {
     const store = await readStore();
     store[bookKey] = list;

@@ -80,6 +80,19 @@
     persist();
   }
 
+  // lets the page's Escape coordinator yield to the rail while the
+  // add-bookmark popover or rename editor is up (they hold keyboard focus)
+  export function isEditing() {
+    return adding || editing !== null;
+  }
+
+  // the coordinator dismisses the popover/rename itself (with stopPropagation),
+  // so exactly one layer closes per press even with a tool drawer also open
+  export function cancelEditing() {
+    editing = null;
+    adding = false;
+  }
+
   function onkeydown(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
     if (editing) {

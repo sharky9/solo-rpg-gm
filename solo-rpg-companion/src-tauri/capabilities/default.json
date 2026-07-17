@@ -21,7 +21,12 @@
     },
     {
       "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+      "allow": [
+        { "path": "$APPDATA" },
+        { "path": "$APPDATA/**" },
+        { "path": "$HOME/**" },
+        { "path": "/Volumes/**" }
+      ]
     },
     {
       "identifier": "fs:allow-mkdir",
