@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "pdfjs-assets": "rm -rf static/pdfjs && mkdir -p static/pdfjs && cp -R node_modules/pdfjs-dist/wasm node_modules/pdfjs-dist/iccs node_modules/pdfjs-dist/cmaps node_modules/pdfjs-dist/standard_fonts static/pdfjs/",
+    "predev": "npm run pdfjs-assets",
+    "prebuild": "npm run pdfjs-assets"
   },
   "license": "MIT",
   "dependencies": {

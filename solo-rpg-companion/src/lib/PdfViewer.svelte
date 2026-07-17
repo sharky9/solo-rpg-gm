@@ -51,7 +51,14 @@
     container.innerHTML = "";
 
     // pdf.js transfers the buffer to its worker, so hand it a copy
-    loadingTask = pdfjs.getDocument({ data: bytes.slice() });
+    loadingTask = pdfjs.getDocument({
+      data: bytes.slice(),
+      wasmUrl: "/pdfjs/wasm/",
+      iccUrl: "/pdfjs/iccs/",
+      cMapUrl: "/pdfjs/cmaps/",
+      cMapPacked: true,
+      standardFontDataUrl: "/pdfjs/standard_fonts/",
+    });
     doc = await loadingTask.promise;
     numPages = doc.numPages;
     currentPage = 1;
