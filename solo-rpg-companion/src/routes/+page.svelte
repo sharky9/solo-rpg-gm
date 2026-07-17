@@ -8,8 +8,9 @@
   import CardDeck from "$lib/CardDeck.svelte";
   import TarotDeck from "$lib/TarotDeck.svelte";
   import BookmarkRail from "$lib/BookmarkRail.svelte";
+  import AudioPlayer from "$lib/AudioPlayer.svelte";
 
-  type Tool = "dice" | "coin" | "cards" | "tarot";
+  type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
@@ -96,12 +97,19 @@
         onclick={() => toggleTool("tarot")}
         title={activeTool === "tarot" ? "Put the tarot away" : "Bring out the tarot"}
       >Tarot</button>
+      <button
+        class="quiet"
+        class:active={activeTool === "audio"}
+        onclick={() => toggleTool("audio")}
+        title={activeTool === "audio" ? "Close the audio drawer" : "Open the audio drawer"}
+      >Audio</button>
       <span class="pages">{pageLabel}</span>
     </div>
     <DiceTray open={activeTool === "dice"} onclose={() => (activeTool = null)} />
     <CoinFlip open={activeTool === "coin"} onclose={() => (activeTool = null)} />
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
+    <AudioPlayer open={activeTool === "audio"} onclose={() => (activeTool = null)} />
     <BookmarkRail
       bookKey={bookPath}
       currentPage={pageNum}
