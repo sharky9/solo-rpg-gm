@@ -4,12 +4,24 @@
   import { onDestroy } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import DiceTray from "$lib/DiceTray.svelte";
+  import CoinFlip from "$lib/CoinFlip.svelte";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
   let viewer: PdfViewer | undefined = $state();
   let spreadOn = $state(false);
   let diceOpen = $state(false);
+  let coinOpen = $state(false);
+
+  // both tools sit in the same spot above the chrome — one at a time
+  function toggleDice() {
+    diceOpen = !diceOpen;
+    if (diceOpen) coinOpen = false;
+  }
+  function toggleCoin() {
+    coinOpen = !coinOpen;
+    if (coinOpen) diceOpen = false;
+  }
 
   function toggleSpread() {
     spreadOn = !spreadOn;
@@ -58,12 +70,19 @@
       <button
         class="quiet"
         class:active={diceOpen}
-        onclick={() => (diceOpen = !diceOpen)}
+        onclick={toggleDice}
         title={diceOpen ? "Put the dice away" : "Bring out the dice"}
       >Dice</button>
+      <button
+        class="quiet"
+        class:active={coinOpen}
+        onclick={toggleCoin}
+        title={coinOpen ? "Put the coin away" : "Bring out the coin"}
+      >Coin</button>
       <span class="pages">{pageLabel}</span>
     </div>
     <DiceTray open={diceOpen} onclose={() => (diceOpen = false)} />
+    <CoinFlip open={coinOpen} onclose={() => (coinOpen = false)} />
   {:else}
     <div class="empty">
       <h1>Solo RPG Companion</h1>
