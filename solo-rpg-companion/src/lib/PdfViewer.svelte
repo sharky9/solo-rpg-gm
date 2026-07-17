@@ -3,6 +3,7 @@
   import workerURL from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
   import { onDestroy } from "svelte";
+  import * as perf from "./perf";
 
   pdfjs.GlobalWorkerOptions.workerSrc = workerURL;
 
@@ -60,6 +61,7 @@
       standardFontDataUrl: "/pdfjs/standard_fonts/",
     });
     doc = await loadingTask.promise;
+    perf.mark("parse");
     numPages = doc.numPages;
     currentPage = 1;
 
@@ -91,6 +93,7 @@
       slots.push({ el, rendered: false, task: null });
       io.observe(el);
     }
+    perf.mark("placeholders");
   }
 
   function computeFit() {
@@ -145,6 +148,10 @@
       await slot.task.promise;
       slot.el.replaceChildren(canvas);
       slot.rendered = true;
+      if (i === 1) {
+        perf.mark("first-render");
+        perf.summarize();
+      }
     } catch {
       // render cancelled (scrolled away / zoom changed) — placeholder stays
     } finally {

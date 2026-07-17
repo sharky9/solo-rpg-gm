@@ -9,6 +9,7 @@
   import TarotDeck from "$lib/TarotDeck.svelte";
   import BookmarkRail from "$lib/BookmarkRail.svelte";
   import AudioPlayer from "$lib/AudioPlayer.svelte";
+  import * as perf from "$lib/perf";
 
   type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
 
@@ -50,7 +51,9 @@
       multiple: false,
     });
     if (typeof path !== "string") return;
+    perf.beginLoad();
     pdfData = await readFile(path);
+    perf.mark("file-read");
     bookPath = path;
     bookName = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
   }
