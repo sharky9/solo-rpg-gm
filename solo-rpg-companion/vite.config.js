@@ -4,6 +4,11 @@ import { sveltekit } from "@sveltejs/kit/vite";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// pdf.js runtime assets (wasm image decoders, ICC profiles, cmaps, standard
+// fonts) are copied into static/pdfjs/ by the `pdfjs-assets` npm script,
+// which runs automatically before dev and build. Without them, text renders
+// but embedded art (JPEG-2000 etc.) silently fails to decode.
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [sveltekit()],
