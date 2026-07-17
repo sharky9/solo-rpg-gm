@@ -80,6 +80,12 @@
     persist();
   }
 
+  // lets the page's Escape coordinator yield to the rail while the
+  // add-bookmark popover or rename editor is up (they hold keyboard focus)
+  export function isEditing() {
+    return adding || editing !== null;
+  }
+
   function onkeydown(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
     if (editing) {

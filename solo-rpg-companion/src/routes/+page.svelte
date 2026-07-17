@@ -1,7 +1,7 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { readFile } from "@tauri-apps/plugin-fs";
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import DiceTray from "$lib/DiceTray.svelte";
   import CoinFlip from "$lib/CoinFlip.svelte";
@@ -26,6 +26,7 @@
   let loadError = $state("");
   let openSeq = 0; // a newer pick supersedes any load still in flight
   let viewer: PdfViewer | undefined = $state();
+  let rail: BookmarkRail | undefined = $state();
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
   let activeTool = $state<Tool | null>(null);
@@ -67,13 +68,43 @@
     if (path === refDoc?.path) closeReference();
   }
 
-  // the split and fan can't outlive a readable book (R17/R18 — U6 refines swap timing)
+  // safety net: the split and fan can't outlive a readable book (R17). The
+  // authoritative close on book-swap happens in openBook's late-swap block;
+  // this catches any other path that drops viewerReady (same values — no fight).
   $effect(() => {
     if (!viewerReady && (splitOpen || fanOpen)) {
       splitOpen = false;
       refDoc = null;
       fanOpen = false;
     }
+  });
+
+  // One Escape owner (R16): dismisses exactly one layer per press, with the
+  // bookmark rail's popover/rename first (it holds keyboard focus), then the
+  // fan, then the open tool drawer, then the split pane. Registered on the
+  // CAPTURE phase so it runs before the tools' own bubble-phase window
+  // listeners — stopPropagation() below is what prevents a double-dismiss.
+  // (Capture isn't expressible via <svelte:window> attributes.)
+  function onEscapeCapture(e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    // the rail's own window listener owns this press — let it propagate
+    if (rail?.isEditing()) return;
+    if (fanOpen) {
+      fanOpen = false;
+    } else if (activeTool) {
+      activeTool = null;
+    } else if (splitOpen) {
+      closeReference();
+    } else {
+      return; // nothing open — the tools' listeners are gated on `open` anyway
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  onMount(() => {
+    window.addEventListener("keydown", onEscapeCapture, true);
+    return () => window.removeEventListener("keydown", onEscapeCapture, true);
   });
 
   function toggleSpread() {
@@ -122,8 +153,13 @@
     perf.mark("file-read");
 
     // late-swap: data, path, and title change together, only once the read
-    // succeeded, so the chrome never names a book that isn't loading
+    // succeeded, so the chrome never names a book that isn't loading. The fan
+    // and split belong to the outgoing book, so they close here too (R18) —
+    // a cancelled dialog or failed read above never touches them.
     viewerReady = false;
+    fanOpen = false;
+    refDoc = null;
+    splitOpen = false;
     pdfData = bytes;
     bookPath = path;
     bookName = name;
@@ -155,6 +191,7 @@
       <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
       {#if viewerReady}
         <BookmarkRail
+          bind:this={rail}
           bookKey={bookPath}
           currentPage={pageNum}
           spread={spreadOn}
