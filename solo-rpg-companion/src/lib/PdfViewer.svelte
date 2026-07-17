@@ -7,7 +7,15 @@
 
   pdfjs.GlobalWorkerOptions.workerSrc = workerURL;
 
-  let { data }: { data: Uint8Array } = $props();
+  let {
+    data,
+    onready,
+    onerror,
+  }: {
+    data: Uint8Array;
+    onready?: () => void;
+    onerror?: (message: string) => void;
+  } = $props();
 
   let container: HTMLDivElement;
   let loadingTask: ReturnType<typeof pdfjs.getDocument> | null = null;
@@ -60,7 +68,14 @@
       cMapPacked: true,
       standardFontDataUrl: "/pdfjs/standard_fonts/",
     });
-    doc = await loadingTask.promise;
+    try {
+      doc = await loadingTask.promise;
+    } catch (e) {
+      onerror?.(
+        `Couldn't open the PDF — it may be corrupt or unsupported. (${e instanceof Error ? e.message : e})`,
+      );
+      return;
+    }
     perf.mark("parse");
     numPages = doc.numPages;
     currentPage = 1;
@@ -151,6 +166,7 @@
       if (i === 1) {
         perf.mark("first-render");
         perf.summarize();
+        onready?.();
       }
     } catch {
       // render cancelled (scrolled away / zoom changed) — placeholder stays
