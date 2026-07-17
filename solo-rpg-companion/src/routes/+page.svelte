@@ -10,6 +10,7 @@
   import BookmarkRail from "$lib/BookmarkRail.svelte";
   import AudioPlayer from "$lib/AudioPlayer.svelte";
   import ReferencePane from "$lib/ReferencePane.svelte";
+  import ReferenceFan from "$lib/ReferenceFan.svelte";
   import * as perf from "$lib/perf";
 
   type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
@@ -32,6 +33,8 @@
   let splitOpen = $state(false);
   // the reference doc shown in the pane; its failures never touch book state
   let refDoc = $state<{ name: string; path: string } | null>(null);
+  // the paper-stack fan of this book's reference documents
+  let fanOpen = $state(false);
 
   function toggleTool(tool: Tool) {
     activeTool = activeTool === tool ? null : tool;
@@ -43,23 +46,33 @@
     requestAnimationFrame(() => viewer?.refit());
   }
 
-  // the reference fan will call this (U5); nothing in the UI triggers it yet
   function openReference(doc: { name: string; path: string }) {
     refDoc = doc;
     toggleSplit(true);
   }
-  void openReference; // referenced to keep check clean until the fan wires it up
 
   function closeReference() {
     refDoc = null;
     toggleSplit(false);
   }
 
-  // the split can't outlive a readable book (R17/R18 — U6 refines swap timing)
+  // reselecting the open doc just dismisses the fan — no reload (R19)
+  function onFanSelect(doc: { name: string; path: string }) {
+    fanOpen = false;
+    if (doc.path !== refDoc?.path) openReference(doc);
+  }
+
+  // removing the doc that's open in the pane also closes the pane (R19)
+  function onFanRemove(path: string) {
+    if (path === refDoc?.path) closeReference();
+  }
+
+  // the split and fan can't outlive a readable book (R17/R18 — U6 refines swap timing)
   $effect(() => {
-    if (!viewerReady && splitOpen) {
+    if (!viewerReady && (splitOpen || fanOpen)) {
       splitOpen = false;
       refDoc = null;
+      fanOpen = false;
     }
   });
 
@@ -148,6 +161,20 @@
           totalPages={pageTotal}
           onjump={(p) => viewer?.goToPage(p)}
         />
+        <!-- paper-stack: anchored to this pane's corner so it rides the divider
+             and never sits over the reference pane -->
+        <button
+          class="stack"
+          class:active={fanOpen}
+          onclick={() => (fanOpen = !fanOpen)}
+          title={fanOpen ? "Put the references away" : "Fan out the references"}
+          aria-label={fanOpen ? "Close reference documents" : "Open reference documents"}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="7" y="3" width="12" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <rect x="4" y="6.5" width="12" height="15" rx="1.5" fill="#262220" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+        </button>
       {/if}
     </div>
     {#if splitOpen && refDoc}
@@ -210,6 +237,13 @@
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
     <AudioPlayer open={activeTool === "audio"} onclose={() => (activeTool = null)} />
+    <ReferenceFan
+      bookKey={bookPath}
+      open={fanOpen}
+      onselect={onFanSelect}
+      onclose={() => (fanOpen = false)}
+      onremove={onFanRemove}
+    />
   {:else}
     <div class="empty">
       {#if loading}
@@ -257,6 +291,47 @@
     bottom: 0;
     right: 0;
     width: 45%;
+  }
+
+  /* paper-stack icon: low-opacity chrome pinned to the book pane's corner */
+  .stack {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 0;
+    background: rgba(28, 24, 21, 0.82);
+    backdrop-filter: blur(6px);
+    color: #e8e2d5;
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.15s;
+    z-index: 6;
+  }
+  .stack svg {
+    width: 20px;
+    height: 20px;
+  }
+  .stack:hover,
+  .stack.active {
+    opacity: 1;
+  }
+  .stack.active {
+    color: #e4c37e;
+    background: rgba(201, 163, 92, 0.22);
+  }
+  .stack:focus-visible {
+    outline: 2px solid #c9a35c;
+    outline-offset: 2px;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stack { transition: none; }
   }
 
   .empty {
