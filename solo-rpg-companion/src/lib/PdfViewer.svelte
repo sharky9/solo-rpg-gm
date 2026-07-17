@@ -3,7 +3,7 @@
   import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
   import { onDestroy } from "svelte";
   import * as perf from "./perf";
-  import { worker } from "./pdfWorker";
+  import { worker, workerQueue } from "./pdfWorker";
 
   let {
     data,
@@ -55,13 +55,19 @@
     loadingTask = null;
     doc = null;
     // settle the previous task before a new getDocument shares the worker —
-    // destroying a task mid-flight can disturb others on the same port
-    if (prev) await prev.destroy().catch(() => {});
+    // destroying a task mid-flight can disturb others on the same port.
+    // Published on workerQueue so a remounted viewer instance waits too.
+    if (prev) {
+      const settled = prev.destroy().catch(() => {});
+      workerQueue.settled = settled;
+      await settled;
+    }
   }
 
   async function load(bytes: Uint8Array) {
     const seq = ++loadSeq;
     await teardown();
+    await workerQueue.settled; // a prior instance's teardown may still be settling
     if (seq !== loadSeq) return; // superseded while the old task settled
     container.innerHTML = "";
 
@@ -92,13 +98,21 @@
     numPages = doc.numPages;
     currentPage = 1;
 
-    const first = await doc.getPage(1);
-    if (seq !== loadSeq) return;
-    const base = first.getViewport({ scale: 1 });
-    baseW = base.width;
-    baseH = base.height;
+    try {
+      const first = await doc.getPage(1);
+      if (seq !== loadSeq) return;
+      const base = first.getViewport({ scale: 1 });
+      baseW = base.width;
+      baseH = base.height;
 
-    await buildLayout(true);
+      await buildLayout(true);
+    } catch (e) {
+      // without this, a post-parse failure strands the host in loading state
+      if (seq !== loadSeq) return;
+      onerror?.(
+        `Couldn't display the first page — the PDF may be corrupt. (${e instanceof Error ? e.message : e})`,
+      );
+    }
   }
 
   let buildSeq = 0; // a rebuild (spread toggle) invalidates a pending deferred fill
@@ -109,6 +123,8 @@
   // happens behind a frame so the reader isn't waiting on it.
   async function buildLayout(deferBulk: boolean) {
     const bseq = ++buildSeq;
+    const seq = loadSeq;
+    const stale = () => seq !== loadSeq || bseq !== buildSeq;
     io?.disconnect();
     for (const s of slots) s.task?.cancel();
     slots = [];
@@ -122,7 +138,11 @@
     });
 
     let row: HTMLDivElement | null = null;
-    const addPage = (i: number) => {
+    // observe: every slot must eventually be observed (rendered ones included —
+    // page 1 has to re-render after zoom drops its canvas; the render() guard
+    // stops double-renders). The eager path defers observing page 1 until its
+    // render settles, or the observer could re-enter render(1) mid-await.
+    const addPage = (i: number, observe = true) => {
       // book layout: the cover sits alone, then facing pairs (2-3, 4-5, …)
       if (!spread || i === 1 || i % 2 === 0) {
         row = document.createElement("div");
@@ -135,23 +155,31 @@
       sizePlaceholder(el, baseW, baseH);
       row!.appendChild(el);
       slots.push({ el, rendered: false, task: null });
-      // observe every slot, including rendered ones — the render() guard stops
-      // double-renders, and page 1 must re-render after zoom drops its canvas
-      io!.observe(el);
+      if (observe) io!.observe(el);
+    };
+    const fillRemaining = () => {
+      for (let i = 2; i <= numPages; i++) addPage(i);
     };
 
-    addPage(1);
     if (!deferBulk) {
-      for (let i = 2; i <= numPages; i++) addPage(i);
+      addPage(1);
+      fillRemaining();
       return;
     }
 
-    const seq = loadSeq;
+    addPage(1, false);
     await render(1); // a readable page before any bulk placeholder work
-    if (seq !== loadSeq || bseq !== buildSeq) return;
+    if (stale()) return;
+    if (!slots[0].rendered) {
+      onerror?.("Couldn't display the first page — the PDF may be corrupt.");
+      return;
+    }
+    perf.mark("first-render");
+    onready?.(); // once per load, owned by the load pipeline
+    io.observe(slots[0].el);
     requestAnimationFrame(() => {
-      if (seq !== loadSeq || bseq !== buildSeq) return;
-      for (let i = 2; i <= numPages; i++) addPage(i);
+      if (stale()) return;
+      fillRemaining();
       perf.mark("placeholders");
       perf.summarize();
     });
@@ -183,7 +211,9 @@
     if (!doc || !slot || slot.rendered || slot.task) return;
 
     const page = await doc.getPage(i);
-    if (!slots[i - 1]) return; // torn down while awaiting
+    // identity check: the layout may have been rebuilt (spread/zoom) or another
+    // render(i) may have won the race while this one awaited getPage
+    if (slots[i - 1] !== slot || slot.rendered || slot.task) return;
 
     const vp = page.getViewport({ scale });
     const dpr = window.devicePixelRatio || 1;
@@ -209,10 +239,6 @@
       await slot.task.promise;
       slot.el.replaceChildren(canvas);
       slot.rendered = true;
-      if (i === 1) {
-        perf.mark("first-render");
-        onready?.();
-      }
     } catch {
       // render cancelled (scrolled away / zoom changed) — placeholder stays
     } finally {

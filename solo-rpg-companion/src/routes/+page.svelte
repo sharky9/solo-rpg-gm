@@ -18,6 +18,9 @@
   let bookPath = $state("");
   // true from the moment a pick resolves until page 1 renders (or the load fails)
   let loading = $state(false);
+  // true while the *displayed* document is readable — gates chrome/rail so a
+  // re-open doesn't unmount controls floating over the still-visible old book
+  let viewerReady = $state(false);
   let loadError = $state("");
   let openSeq = 0; // a newer pick supersedes any load still in flight
   let viewer: PdfViewer | undefined = $state();
@@ -76,6 +79,7 @@
 
     // late-swap: data, path, and title change together, only once the read
     // succeeded, so the chrome never names a book that isn't loading
+    viewerReady = false;
     pdfData = bytes;
     bookPath = path;
     bookName = name;
@@ -83,6 +87,7 @@
 
   function onViewerReady() {
     loading = false;
+    viewerReady = true;
   }
 
   function onViewerError(message: string) {
@@ -90,6 +95,7 @@
     // so fall back to the empty state with the error inline
     loadError = message;
     loading = false;
+    viewerReady = false;
     pdfData = null;
     bookPath = "";
     bookName = "";
@@ -105,7 +111,7 @@
       {#if loading}<span class="loading-note">Loading…</span>{/if}
       {#if loadError && !loading}<span class="error">{loadError}</span>{/if}
     </div>
-    {#if !loading}
+    {#if viewerReady}
     <div class="chrome bottom">
       <button class="quiet" onclick={() => viewer?.zoomOut()} aria-label="Zoom out">−</button>
       <button class="quiet" onclick={() => viewer?.setZoom(100)} title="Fit width">Fit</button>
@@ -154,7 +160,7 @@
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
     <AudioPlayer open={activeTool === "audio"} onclose={() => (activeTool = null)} />
-    {#if !loading}
+    {#if viewerReady}
       <BookmarkRail
         bookKey={bookPath}
         currentPage={pageNum}
@@ -232,7 +238,7 @@
     padding-right: 0.6rem;
   }
   .error {
-    color: #e0917f;
+    color: #e0897f; /* matches AudioPlayer's error red */
     font-size: 0.85rem;
     margin: 0 0 1rem;
     max-width: 46ch;
