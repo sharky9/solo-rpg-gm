@@ -27,10 +27,25 @@
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
   let activeTool = $state<Tool | null>(null);
+  // split reader: book pane narrows to ~55%, reference pane takes the rest
+  let splitOpen = $state(false);
 
   function toggleTool(tool: Tool) {
     activeTool = activeTool === tool ? null : tool;
   }
+
+  // the reference fan will call this (U5); nothing in the UI triggers it yet
+  function toggleSplit(open: boolean) {
+    splitOpen = open;
+    // refit after the pane width lands — the viewer reads clientWidth directly
+    requestAnimationFrame(() => viewer?.refit());
+  }
+  void toggleSplit; // referenced to keep check clean until the fan wires it up
+
+  // the split can't outlive a readable book (R17/R18 — U6 refines swap timing)
+  $effect(() => {
+    if (!viewerReady && splitOpen) splitOpen = false;
+  });
 
   function toggleSpread() {
     spreadOn = !spreadOn;
@@ -104,7 +119,25 @@
 
 <main>
   {#if pdfData}
-    <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
+    <!-- the book viewer must never remount — its buffer is transferred to the
+         pdf.js worker, so a recreate would re-load a detached buffer and fail.
+         The split only ever changes this pane's width. -->
+    <div class="book-pane" class:split={splitOpen}>
+      <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
+      {#if viewerReady}
+        <BookmarkRail
+          bookKey={bookPath}
+          currentPage={pageNum}
+          spread={spreadOn}
+          totalPages={pageTotal}
+          onjump={(p) => viewer?.goToPage(p)}
+        />
+      {/if}
+    </div>
+    {#if splitOpen}
+      <!-- reference viewer lands here (U4) -->
+      <div class="reference-pane"></div>
+    {/if}
     <div class="chrome top">
       <button class="quiet" onclick={openBook} title="Open another gamebook">Open</button>
       <span class="title">{bookName}</span>
@@ -160,15 +193,6 @@
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
     <AudioPlayer open={activeTool === "audio"} onclose={() => (activeTool = null)} />
-    {#if viewerReady}
-      <BookmarkRail
-        bookKey={bookPath}
-        currentPage={pageNum}
-        spread={spreadOn}
-        totalPages={pageTotal}
-        onjump={(p) => viewer?.goToPage(p)}
-      />
-    {/if}
   {:else}
     <div class="empty">
       {#if loading}
@@ -195,6 +219,27 @@
   main {
     position: fixed;
     inset: 0;
+  }
+
+  /* book pane: the rail's positioned ancestor, so its right-edge tabs land on
+     the divider when split. No width transition — refit() reads clientWidth
+     right after the toggle, and a mid-animation width would mis-fit. */
+  .book-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+  }
+  .book-pane.split {
+    width: 55%;
+  }
+  .reference-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 45%;
   }
 
   .empty {
