@@ -14,10 +14,13 @@
   let numPages = $state(0);
   let currentPage = $state(1);
   let zoomPct = $state(100);
+  let spread = false; // two-page book view: cover alone, then 2-3, 4-5, …
 
   // scale 1.0 = fit-width, computed on load
   let fitWidthScale = 1;
   let scale = 1;
+  let baseW = 0; // page 1 size at scale 1, used for all placeholders
+  let baseH = 0;
 
   type Slot = {
     el: HTMLDivElement;
@@ -55,7 +58,9 @@
 
     const first = await doc.getPage(1);
     const base = first.getViewport({ scale: 1 });
-    fitWidthScale = (container.clientWidth - 48) / base.width;
+    baseW = base.width;
+    baseH = base.height;
+    computeFit();
     scale = fitWidthScale * (zoomPct / 100);
 
     io = new IntersectionObserver(onIntersect, {
@@ -63,15 +68,30 @@
       rootMargin: "150% 0px", // render ~1.5 screens ahead, drop what falls behind
     });
 
+    let row: HTMLDivElement | null = null;
     for (let i = 1; i <= numPages; i++) {
+      // book layout: the cover sits alone, then facing pairs (2-3, 4-5, …)
+      if (!spread || i === 1 || i % 2 === 0) {
+        row = document.createElement("div");
+        row.className = "row";
+        container.appendChild(row);
+      }
       const el = document.createElement("div");
       el.className = "page";
       el.dataset.page = String(i);
-      sizePlaceholder(el, base.width, base.height);
-      container.appendChild(el);
+      sizePlaceholder(el, baseW, baseH);
+      row!.appendChild(el);
       slots.push({ el, rendered: false, task: null });
       io.observe(el);
     }
+  }
+
+  function computeFit() {
+    const pad = 48;
+    const gap = 16;
+    fitWidthScale = spread
+      ? (container.clientWidth - pad - gap) / (2 * baseW)
+      : (container.clientWidth - pad) / baseW;
   }
 
   function sizePlaceholder(el: HTMLDivElement, w: number, h: number) {
@@ -155,16 +175,22 @@
   export function zoomIn() { setZoom(zoomPct * 1.2); }
   export function zoomOut() { setZoom(zoomPct / 1.2); }
 
+  export async function setSpread(on: boolean) {
+    if (spread === on || !doc) return;
+    spread = on;
+    const anchor = currentPage;
+    await load(data); // rebuild rows; zoomPct is preserved, fit recomputed
+    goToPage(anchor);
+  }
+
   async function rescale() {
     if (!doc) return;
     const anchor = currentPage;
     scale = fitWidthScale * (zoomPct / 100);
 
-    const first = await doc.getPage(1);
-    const base = first.getViewport({ scale: 1 });
     for (let i = 0; i < slots.length; i++) {
       unrender(i + 1);
-      sizePlaceholder(slots[i].el, base.width, base.height);
+      sizePlaceholder(slots[i].el, baseW, baseH);
     }
     goToPage(anchor);
     // placeholders resized: nudge the observer to re-evaluate what's visible
@@ -196,6 +222,11 @@
     gap: 16px;
     padding: 16px 0;
     background: var(--viewer-bg, #262220);
+  }
+  .viewer :global(.row) {
+    display: flex;
+    gap: 16px;
+    flex-shrink: 0;
   }
   .viewer :global(.page) {
     background: #fff;

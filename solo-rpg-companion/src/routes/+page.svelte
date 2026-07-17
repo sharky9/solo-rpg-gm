@@ -7,6 +7,12 @@
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
   let viewer: PdfViewer | undefined = $state();
+  let spreadOn = $state(false);
+
+  function toggleSpread() {
+    spreadOn = !spreadOn;
+    viewer?.setSpread(spreadOn);
+  }
 
   // poll the viewer for chrome display (cheap; avoids cross-component stores for now)
   let pageLabel = $state("");
@@ -41,6 +47,12 @@
       <button class="quiet" onclick={() => viewer?.zoomOut()} aria-label="Zoom out">−</button>
       <button class="quiet" onclick={() => viewer?.setZoom(100)} title="Fit width">Fit</button>
       <button class="quiet" onclick={() => viewer?.zoomIn()} aria-label="Zoom in">+</button>
+      <button
+        class="quiet"
+        class:active={spreadOn}
+        onclick={toggleSpread}
+        title={spreadOn ? "Single page view" : "Two-page book view"}
+      >Spread</button>
       <span class="pages">{pageLabel}</span>
     </div>
   {:else}
@@ -123,6 +135,7 @@
     cursor: pointer;
   }
   .quiet:hover { background: rgba(255, 255, 255, 0.08); }
+  .quiet.active { background: rgba(201, 163, 92, 0.22); color: #e4c37e; }
   .quiet:focus-visible, .primary:focus-visible {
     outline: 2px solid #c9a35c;
     outline-offset: 2px;
