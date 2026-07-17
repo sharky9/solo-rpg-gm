@@ -7,10 +7,12 @@
 
   let {
     data,
+    perfLog = true,
     onready,
     onerror,
   }: {
     data: Uint8Array;
+    perfLog?: boolean; // off for secondary instances — perf state is module-global
     onready?: () => void;
     onerror?: (message: string) => void;
   } = $props();
@@ -43,6 +45,7 @@
   });
 
   onDestroy(() => {
+    loadSeq++; // a destroy-triggered load rejection is supersession, not an error
     void teardown();
   });
 
@@ -94,7 +97,7 @@
     }
     if (seq !== loadSeq) return;
     doc = nextDoc;
-    perf.mark("parse");
+    if (perfLog) perf.mark("parse");
     numPages = doc.numPages;
     currentPage = 1;
 
@@ -174,14 +177,16 @@
       onerror?.("Couldn't display the first page — the PDF may be corrupt.");
       return;
     }
-    perf.mark("first-render");
+    if (perfLog) perf.mark("first-render");
     onready?.(); // once per load, owned by the load pipeline
     io.observe(slots[0].el);
     requestAnimationFrame(() => {
       if (stale()) return;
       fillRemaining();
-      perf.mark("placeholders");
-      perf.summarize();
+      if (perfLog) {
+        perf.mark("placeholders");
+        perf.summarize();
+      }
     });
   }
 
@@ -283,6 +288,14 @@
     const anchor = currentPage;
     void buildLayout(false); // synchronous full rebuild; zoomPct preserved
     goToPage(anchor);
+  }
+
+  // re-fit to the container's current width (e.g. after a split-pane resize),
+  // preserving the current page and zoom percentage relative to the new fit
+  export function refit() {
+    if (!doc) return;
+    computeFit();
+    void rescale();
   }
 
   async function rescale() {
