@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
-
   let { open = false, onclose }: { open?: boolean; onclose?: () => void } = $props();
 
   type Card = { rank: string; suit: string; red: boolean; joker?: boolean };
@@ -14,14 +12,9 @@
   ];
 
   let deck = $state<Card[]>([]); // remaining cards; the end of the array is the top
-  let drawn = $state<Card[]>([]); // draw order; the last entry is the card on show
+  let drawn = $state<Card[]>([]); // every card drawn since the last shuffle, in order
   let withJokers = $state(false);
-  let flipping = $state(false);
-
-  const timers = new Set<ReturnType<typeof setTimeout>>();
-  onDestroy(() => {
-    for (const t of timers) clearTimeout(t);
-  });
+  let spreadEl = $state<HTMLElement | null>(null);
 
   const reduced =
     typeof matchMedia !== "undefined" &&
@@ -34,7 +27,6 @@
   }
 
   function shuffle() {
-    if (flipping) return;
     const cards: Card[] = [];
     for (const s of SUITS)
       for (const r of RANKS) cards.push({ rank: r, suit: s.sym, red: s.red });
@@ -54,19 +46,17 @@
   shuffle();
 
   function draw() {
-    if (!deck.length || flipping) return;
+    if (!deck.length) return;
     const card = deck.pop()!; // result first: the card is decided before the flip plays
     deck = deck;
     drawn.push(card);
-    if (!reduced) {
-      flipping = true;
-      const t = setTimeout(() => {
-        timers.delete(t);
-        flipping = false;
-      }, 420);
-      timers.add(t);
-    }
   }
+
+  // keep the newest card in view as the spread grows
+  $effect(() => {
+    void drawn.length;
+    if (spreadEl) spreadEl.scrollTop = spreadEl.scrollHeight;
+  });
 
   const current = $derived(drawn.length ? drawn[drawn.length - 1] : null);
 
@@ -106,28 +96,21 @@
         {/if}
       </button>
 
-      <div class="slot">
-        {#if current}
-          {#key drawn.length}
-            <div
-              class="card"
-              class:flip={!reduced}
-              class:red={current.red}
-              aria-label={cardName(current)}
-            >
-              {#if current.joker}
+      <div class="spread" bind:this={spreadEl} aria-label="Drawn cards">
+        {#if drawn.length}
+          {#each drawn as c, i (i)}
+            <div class="card" class:flip={!reduced} class:red={c.red} aria-label={cardName(c)}>
+              {#if c.joker}
                 <span class="corner">★</span>
                 <span class="joker-label">JOKER</span>
-                <span class="corner flip180">★</span>
               {:else}
-                <span class="corner">{current.rank}<br />{current.suit}</span>
-                <span class="pip">{current.suit}</span>
-                <span class="corner flip180">{current.rank}<br />{current.suit}</span>
+                <span class="corner">{c.rank}<br />{c.suit}</span>
+                <span class="pip">{c.suit}</span>
               {/if}
             </div>
-          {/key}
+          {/each}
         {:else}
-          <div class="card placeholder"></div>
+          <span class="spread-hint">Tap the deck to draw — cards pile up here until you shuffle</span>
         {/if}
       </div>
     </div>
@@ -136,7 +119,7 @@
       {#if current}
         <span class="name" class:red-text={current.red}>{cardName(current)}</span>
       {:else}
-        <span class="name muted">Tap the deck to draw</span>
+        <span class="name muted">Nothing drawn yet</span>
       {/if}
       <span class="counts">{deck.length} left · {drawn.length} drawn</span>
     </div>
@@ -157,6 +140,7 @@
     bottom: 64px;
     left: 50%;
     transform: translateX(-50%);
+    width: min(560px, calc(100vw - 24px));
     background: rgba(28, 24, 21, 0.94);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(232, 226, 213, 0.12);
@@ -171,19 +155,16 @@
 
   .table-row {
     display: flex;
-    gap: 1rem;
-    align-items: center;
-  }
-
-  .pile,
-  .card,
-  .placeholder {
-    width: 92px;
-    height: 128px;
-    border-radius: 9px;
+    gap: 0.9rem;
+    align-items: flex-start;
+    width: 100%;
   }
 
   .pile {
+    width: 92px;
+    height: 128px;
+    flex: none;
+    border-radius: 9px;
     border: 0;
     padding: 0;
     background: none;
@@ -222,13 +203,41 @@
     outline-offset: 3px;
   }
 
-  .slot {
-    perspective: 700px;
+  .spread {
+    flex: 1;
+    min-height: 128px;
+    max-height: 236px;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    border-radius: 10px;
+    border: 1.5px dashed rgba(156, 147, 132, 0.4);
+    perspective: 600px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 147, 132, 0.5) transparent;
   }
+  .spread-hint {
+    color: #9c9384;
+    font-size: 0.82rem;
+    align-self: center;
+    text-align: center;
+    width: 100%;
+    padding: 2.2rem 0.5rem;
+    box-sizing: border-box;
+  }
+
   .card {
     position: relative;
+    width: 54px;
+    height: 76px;
+    flex: none;
+    border-radius: 6px;
     background: #fffdf6;
-    border: 1.5px solid #b5a98e;
+    border: 1px solid #b5a98e;
     font-family: Georgia, serif;
     color: #2a241a;
     display: flex;
@@ -238,34 +247,23 @@
   .card.red {
     color: #a8352c;
   }
-  .placeholder {
-    background: none;
-    border: 1.5px dashed rgba(156, 147, 132, 0.4);
-  }
 
   .corner {
     position: absolute;
-    top: 6px;
-    left: 8px;
-    font-size: 0.95rem;
+    top: 3px;
+    left: 5px;
+    font-size: 0.68rem;
     font-weight: 700;
     line-height: 1.05;
     text-align: center;
   }
-  .corner.flip180 {
-    top: auto;
-    left: auto;
-    bottom: 6px;
-    right: 8px;
-    transform: rotate(180deg);
-  }
   .pip {
-    font-size: 3rem;
+    font-size: 1.7rem;
   }
   .joker-label {
-    font-size: 0.95rem;
+    font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.28em;
+    letter-spacing: 0.22em;
     writing-mode: vertical-rl;
   }
 
@@ -325,7 +323,6 @@
     filter: brightness(1.08);
   }
   .shuffle:focus-visible,
-  .pile:focus-visible,
   .jokers input:focus-visible {
     outline: 2px solid #c9a35c;
     outline-offset: 2px;
