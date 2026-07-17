@@ -7,11 +7,13 @@
   import CoinFlip from "$lib/CoinFlip.svelte";
   import CardDeck from "$lib/CardDeck.svelte";
   import TarotDeck from "$lib/TarotDeck.svelte";
+  import BookmarkRail from "$lib/BookmarkRail.svelte";
 
   type Tool = "dice" | "coin" | "cards" | "tarot";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
+  let bookPath = $state("");
   let viewer: PdfViewer | undefined = $state();
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
@@ -28,10 +30,14 @@
 
   // poll the viewer for chrome display (cheap; avoids cross-component stores for now)
   let pageLabel = $state("");
+  let pageNum = $state(1);
+  let pageTotal = $state(0);
   const poll = setInterval(() => {
     if (viewer && pdfData) {
       const { current, total } = viewer.pageInfo();
       pageLabel = total ? `${current} / ${total}` : "";
+      pageNum = current;
+      pageTotal = total;
     }
   }, 250);
   onDestroy(() => clearInterval(poll));
@@ -44,7 +50,8 @@
     });
     if (typeof path !== "string") return;
     pdfData = await readFile(path);
-    bookName = path.split("/").pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
+    bookPath = path;
+    bookName = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
   }
 </script>
 
@@ -95,6 +102,13 @@
     <CoinFlip open={activeTool === "coin"} onclose={() => (activeTool = null)} />
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
+    <BookmarkRail
+      bookKey={bookPath}
+      currentPage={pageNum}
+      spread={spreadOn}
+      totalPages={pageTotal}
+      onjump={(p) => viewer?.goToPage(p)}
+    />
   {:else}
     <div class="empty">
       <h1>Solo RPG Companion</h1>
