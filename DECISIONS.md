@@ -25,7 +25,7 @@ A personal desktop companion app for playing solo tabletop RPGs. The guiding sta
 | PDF viewer + bookmarks | Full-screen, right-edge bookmark tabs, multiple documents |
 | Dice roller | Functions like Google's search dice widget (see spec below) |
 | Playing-card deck | 52 cards + optional jokers (toggle applies on next shuffle). **Session-only, no persistence** — decided 2026-07-17, overriding the earlier "decks with memory" recommendation; revisit if depletion-across-sessions starts to matter in play |
-| Tarot deck | |
+| Tarot deck | Full 78 cards, reversals on by default (50/50, toggle applies on next shuffle). Session-only like the playing deck — decided 2026-07-17 |
 | Coin flipper | Standalone tool (like Google's coin flip), not part of the dice tray — decided 2026-07-17 |
 | Audio player | Folder-based soundtrack playback (see spec below) |
 
@@ -87,6 +87,7 @@ Scaffolded at `solo-rpg-companion/` (Tauri 2 + SvelteKit + TypeScript, via creat
 - `src/lib/DiceTray.svelte` — the dice roller, shipped per the spec above: d4–d20 palette, mixed pools with formula + total, 2D SVG dice, staggered tumble/flicker/count-up animation, crypto-RNG results generated before the animation plays, reduced-motion = instant results. Opens from a "Dice" button in the bottom chrome as an overlay above it (tools-over-the-page pattern); Escape or the button dismisses it; the pool persists while closed. First tool built on the bottom-edge drawer concept.
 - `src/lib/CoinFlip.svelte` — standalone coin flipper: one big SVG coin, tap it (or Flip) to flip, rotateY spin + H/T flicker landing on a crypto-RNG result, reduced-motion = instant. Opens from a "Coin" button in the bottom chrome; opening it closes the dice tray and vice versa (both tools share the spot above the chrome).
 - `src/lib/CardDeck.svelte` — the playing-card deck: crypto Fisher–Yates shuffle (whole order decided up front, result-first), tap the pile to draw with a rotateY flip-in, corner-index + center-pip card faces, remaining/drawn counts, deliberate Shuffle button, jokers toggle (applies on next shuffle). Session-only state; persists while the tray is closed but not across launches. Chrome refactored to a single `activeTool` switch — Dice/Coin/Cards buttons, one tool open at a time.
+- `src/lib/TarotDeck.svelte` — the tarot deck: full 78 (22 majors with roman numerals + 56 minors), crypto Fisher–Yates shuffle with reversals baked into the shuffle itself (each card's orientation is decided when the deck is shuffled, like physical tarot — order and orientation both exist before any flip). Reversed cards render rotated 180° with a "— Reversed" label. Reversals toggle (on by default, applies on next shuffle), deliberate Shuffle, session-only state. Deep green card back with gold star, distinct from the playing deck's gold back. Opens from a "Tarot" button in the chrome.
 - `pdfjs-assets` npm script rewritten in Node (was Unix `rm`/`cp`, which broke `npm run dev` on Windows).
 - Rust side: `tauri-plugin-dialog` + `tauri-plugin-fs` registered; capability grants file reads under `$HOME` and `/Volumes`.
 - Run with `npm run tauri dev` inside `solo-rpg-companion/`.
