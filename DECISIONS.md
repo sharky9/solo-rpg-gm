@@ -83,5 +83,7 @@ Scaffolded at `solo-rpg-companion/` (Tauri 2 + SvelteKit + TypeScript, via creat
 
 - `src/lib/PdfViewer.svelte` — the milestone-one viewer: continuous scroll, lazy render via IntersectionObserver (~1.5 screens ahead, canvases freed when scrolled away), fit-width + zoom (50–400%), retina-aware rendering, current-page tracking.
 - `src/routes/+page.svelte` — app shell: open-PDF dialog, floating low-opacity chrome (top-left: open/title; bottom-center: zoom + page count) that fades in on hover — first pass at the "chrome stays out of the book's way" principle.
+- `src/lib/DiceTray.svelte` — the dice roller, shipped per the spec above: d4–d20 palette, mixed pools with formula + total, 2D SVG dice, staggered tumble/flicker/count-up animation, crypto-RNG results generated before the animation plays, reduced-motion = instant results. Opens from a "Dice" button in the bottom chrome as an overlay above it (tools-over-the-page pattern); Escape or the button dismisses it; the pool persists while closed. First tool built on the bottom-edge drawer concept.
+- `pdfjs-assets` npm script rewritten in Node (was Unix `rm`/`cp`, which broke `npm run dev` on Windows).
 - Rust side: `tauri-plugin-dialog` + `tauri-plugin-fs` registered; capability grants file reads under `$HOME` and `/Volumes`.
 - Run with `npm run tauri dev` inside `solo-rpg-companion/`.

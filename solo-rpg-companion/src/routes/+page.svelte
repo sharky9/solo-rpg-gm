@@ -3,11 +3,13 @@
   import { readFile } from "@tauri-apps/plugin-fs";
   import { onDestroy } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
+  import DiceTray from "$lib/DiceTray.svelte";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
   let viewer: PdfViewer | undefined = $state();
   let spreadOn = $state(false);
+  let diceOpen = $state(false);
 
   function toggleSpread() {
     spreadOn = !spreadOn;
@@ -53,8 +55,15 @@
         onclick={toggleSpread}
         title={spreadOn ? "Single page view" : "Two-page book view"}
       >Spread</button>
+      <button
+        class="quiet"
+        class:active={diceOpen}
+        onclick={() => (diceOpen = !diceOpen)}
+        title={diceOpen ? "Put the dice away" : "Bring out the dice"}
+      >Dice</button>
       <span class="pages">{pageLabel}</span>
     </div>
+    <DiceTray open={diceOpen} onclose={() => (diceOpen = false)} />
   {:else}
     <div class="empty">
       <h1>Solo RPG Companion</h1>
