@@ -36,53 +36,79 @@
   };
   let slots: Slot[] = [];
   let io: IntersectionObserver | null = null;
+  let loadSeq = 0; // a newer load supersedes one still in flight
 
   $effect(() => {
     if (data && container) load(data);
   });
 
-  onDestroy(teardown);
+  onDestroy(() => {
+    void teardown();
+  });
 
-  function teardown() {
+  async function teardown() {
     io?.disconnect();
     io = null;
     for (const s of slots) s.task?.cancel();
     slots = [];
-    loadingTask?.destroy();
+    const prev = loadingTask;
     loadingTask = null;
     doc = null;
+    // settle the previous task before a new getDocument shares the worker —
+    // destroying a task mid-flight can disturb others on the same port
+    if (prev) await prev.destroy().catch(() => {});
   }
 
   async function load(bytes: Uint8Array) {
-    teardown();
+    const seq = ++loadSeq;
+    await teardown();
+    if (seq !== loadSeq) return; // superseded while the old task settled
     container.innerHTML = "";
 
-    // pdf.js transfers the buffer to its worker, so hand it a copy
+    // the buffer transfers (detaches) to the worker: bytes are unusable
+    // from here on, so nothing may read them again
     loadingTask = pdfjs.getDocument({
       worker,
-      data: bytes.slice(),
+      data: bytes,
       wasmUrl: "/pdfjs/wasm/",
       iccUrl: "/pdfjs/iccs/",
       cMapUrl: "/pdfjs/cmaps/",
       cMapPacked: true,
       standardFontDataUrl: "/pdfjs/standard_fonts/",
     });
+    let nextDoc: PDFDocumentProxy;
     try {
-      doc = await loadingTask.promise;
+      nextDoc = await loadingTask.promise;
     } catch (e) {
+      if (seq !== loadSeq) return; // destroyed by a newer load, not an error
       onerror?.(
         `Couldn't open the PDF — it may be corrupt or unsupported. (${e instanceof Error ? e.message : e})`,
       );
       return;
     }
+    if (seq !== loadSeq) return;
+    doc = nextDoc;
     perf.mark("parse");
     numPages = doc.numPages;
     currentPage = 1;
 
     const first = await doc.getPage(1);
+    if (seq !== loadSeq) return;
     const base = first.getViewport({ scale: 1 });
     baseW = base.width;
     baseH = base.height;
+
+    buildLayout();
+    perf.mark("placeholders");
+  }
+
+  // rows and placeholders from the already-parsed doc; also the spread-toggle
+  // path, which must never re-parse (the source buffer is detached)
+  function buildLayout() {
+    io?.disconnect();
+    for (const s of slots) s.task?.cancel();
+    slots = [];
+    container.innerHTML = "";
     computeFit();
     scale = fitWidthScale * (zoomPct / 100);
 
@@ -107,7 +133,6 @@
       slots.push({ el, rendered: false, task: null });
       io.observe(el);
     }
-    perf.mark("placeholders");
   }
 
   function computeFit() {
@@ -204,11 +229,12 @@
   export function zoomIn() { setZoom(zoomPct * 1.2); }
   export function zoomOut() { setZoom(zoomPct / 1.2); }
 
-  export async function setSpread(on: boolean) {
-    if (spread === on || !doc) return;
-    spread = on;
+  export function setSpread(on: boolean) {
+    if (spread === on) return;
+    spread = on; // sync even mid-load so the finishing load lays out correctly
+    if (!doc) return;
     const anchor = currentPage;
-    await load(data); // rebuild rows; zoomPct is preserved, fit recomputed
+    buildLayout(); // rebuild rows from the parsed doc; zoomPct preserved
     goToPage(anchor);
   }
 
