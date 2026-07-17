@@ -11,6 +11,7 @@
   import AudioPlayer from "$lib/AudioPlayer.svelte";
   import ReferencePane from "$lib/ReferencePane.svelte";
   import ReferenceFan from "$lib/ReferenceFan.svelte";
+  import { refDocName, type RefDoc } from "$lib/referenceDocs";
   import * as perf from "$lib/perf";
 
   type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
@@ -30,10 +31,10 @@
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
   let activeTool = $state<Tool | null>(null);
-  // split reader: book pane narrows to ~55%, reference pane takes the rest
-  let splitOpen = $state(false);
-  // the reference doc shown in the pane; its failures never touch book state
-  let refDoc = $state<{ name: string; path: string } | null>(null);
+  // the reference doc shown in the pane; its failures never touch book state.
+  // While one is open, the book pane narrows to ~55% (split reader).
+  let refDoc = $state<RefDoc | null>(null);
+  let splitOpen = $derived(refDoc !== null);
   // the paper-stack fan of this book's reference documents
   let fanOpen = $state(false);
 
@@ -41,24 +42,23 @@
     activeTool = activeTool === tool ? null : tool;
   }
 
-  function toggleSplit(open: boolean) {
-    splitOpen = open;
-    // refit after the pane width lands — the viewer reads clientWidth directly
+  // refit after the pane width lands — the viewer reads clientWidth directly
+  function scheduleRefit() {
     requestAnimationFrame(() => viewer?.refit());
   }
 
-  function openReference(doc: { name: string; path: string }) {
+  function openReference(doc: RefDoc) {
     refDoc = doc;
-    toggleSplit(true);
+    scheduleRefit();
   }
 
   function closeReference() {
     refDoc = null;
-    toggleSplit(false);
+    scheduleRefit();
   }
 
   // reselecting the open doc just dismisses the fan — no reload (R19)
-  function onFanSelect(doc: { name: string; path: string }) {
+  function onFanSelect(doc: RefDoc) {
     fanOpen = false;
     if (doc.path !== refDoc?.path) openReference(doc);
   }
@@ -72,8 +72,7 @@
   // authoritative close on book-swap happens in openBook's late-swap block;
   // this catches any other path that drops viewerReady (same values — no fight).
   $effect(() => {
-    if (!viewerReady && (splitOpen || fanOpen)) {
-      splitOpen = false;
+    if (!viewerReady && (refDoc || fanOpen)) {
       refDoc = null;
       fanOpen = false;
     }
@@ -134,7 +133,7 @@
     });
     if (typeof path !== "string") return;
     const seq = ++openSeq;
-    const name = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
+    const name = refDocName(path) || "Untitled";
     loadError = "";
     loading = true;
     perf.beginLoad();
@@ -159,7 +158,6 @@
     viewerReady = false;
     fanOpen = false;
     refDoc = null;
-    splitOpen = false;
     pdfData = bytes;
     bookPath = path;
     bookName = name;
@@ -214,7 +212,7 @@
         </button>
       {/if}
     </div>
-    {#if splitOpen && refDoc}
+    {#if refDoc}
       <div class="reference-pane">
         <ReferencePane path={refDoc.path} name={refDoc.name} onclose={closeReference} />
       </div>

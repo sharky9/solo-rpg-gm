@@ -18,11 +18,10 @@ type Store = Record<string, Bookmark[]>;
 
 async function readStore(): Promise<Store> {
   const { fs, path } = await tauriFile();
-  if (!(await fs.exists(path))) return {};
   try {
     return JSON.parse(await fs.readTextFile(path));
   } catch {
-    return {}; // unreadable/corrupt file: start fresh rather than crash
+    return {}; // missing, unreadable, or corrupt file: start fresh rather than crash
   }
 }
 
