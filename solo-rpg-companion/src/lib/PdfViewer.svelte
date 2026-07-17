@@ -98,13 +98,17 @@
     baseW = base.width;
     baseH = base.height;
 
-    buildLayout();
-    perf.mark("placeholders");
+    await buildLayout(true);
   }
 
+  let buildSeq = 0; // a rebuild (spread toggle) invalidates a pending deferred fill
+
   // rows and placeholders from the already-parsed doc; also the spread-toggle
-  // path, which must never re-parse (the source buffer is detached)
-  function buildLayout() {
+  // path, which must never re-parse (the source buffer is detached).
+  // deferBulk renders page 1 before the O(numPages) DOM work, which then
+  // happens behind a frame so the reader isn't waiting on it.
+  async function buildLayout(deferBulk: boolean) {
+    const bseq = ++buildSeq;
     io?.disconnect();
     for (const s of slots) s.task?.cancel();
     slots = [];
@@ -118,7 +122,7 @@
     });
 
     let row: HTMLDivElement | null = null;
-    for (let i = 1; i <= numPages; i++) {
+    const addPage = (i: number) => {
       // book layout: the cover sits alone, then facing pairs (2-3, 4-5, …)
       if (!spread || i === 1 || i % 2 === 0) {
         row = document.createElement("div");
@@ -131,8 +135,26 @@
       sizePlaceholder(el, baseW, baseH);
       row!.appendChild(el);
       slots.push({ el, rendered: false, task: null });
-      io.observe(el);
+      // observe every slot, including rendered ones — the render() guard stops
+      // double-renders, and page 1 must re-render after zoom drops its canvas
+      io!.observe(el);
+    };
+
+    addPage(1);
+    if (!deferBulk) {
+      for (let i = 2; i <= numPages; i++) addPage(i);
+      return;
     }
+
+    const seq = loadSeq;
+    await render(1); // a readable page before any bulk placeholder work
+    if (seq !== loadSeq || bseq !== buildSeq) return;
+    requestAnimationFrame(() => {
+      if (seq !== loadSeq || bseq !== buildSeq) return;
+      for (let i = 2; i <= numPages; i++) addPage(i);
+      perf.mark("placeholders");
+      perf.summarize();
+    });
   }
 
   function computeFit() {
@@ -189,7 +211,6 @@
       slot.rendered = true;
       if (i === 1) {
         perf.mark("first-render");
-        perf.summarize();
         onready?.();
       }
     } catch {
@@ -234,7 +255,7 @@
     spread = on; // sync even mid-load so the finishing load lays out correctly
     if (!doc) return;
     const anchor = currentPage;
-    buildLayout(); // rebuild rows from the parsed doc; zoomPct preserved
+    void buildLayout(false); // synchronous full rebuild; zoomPct preserved
     goToPage(anchor);
   }
 
