@@ -5,22 +5,19 @@
   import PdfViewer from "$lib/PdfViewer.svelte";
   import DiceTray from "$lib/DiceTray.svelte";
   import CoinFlip from "$lib/CoinFlip.svelte";
+  import CardDeck from "$lib/CardDeck.svelte";
+
+  type Tool = "dice" | "coin" | "cards";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
   let viewer: PdfViewer | undefined = $state();
   let spreadOn = $state(false);
-  let diceOpen = $state(false);
-  let coinOpen = $state(false);
+  // the tools share the spot above the chrome — one open at a time
+  let activeTool = $state<Tool | null>(null);
 
-  // both tools sit in the same spot above the chrome — one at a time
-  function toggleDice() {
-    diceOpen = !diceOpen;
-    if (diceOpen) coinOpen = false;
-  }
-  function toggleCoin() {
-    coinOpen = !coinOpen;
-    if (coinOpen) diceOpen = false;
+  function toggleTool(tool: Tool) {
+    activeTool = activeTool === tool ? null : tool;
   }
 
   function toggleSpread() {
@@ -69,20 +66,27 @@
       >Spread</button>
       <button
         class="quiet"
-        class:active={diceOpen}
-        onclick={toggleDice}
-        title={diceOpen ? "Put the dice away" : "Bring out the dice"}
+        class:active={activeTool === "dice"}
+        onclick={() => toggleTool("dice")}
+        title={activeTool === "dice" ? "Put the dice away" : "Bring out the dice"}
       >Dice</button>
       <button
         class="quiet"
-        class:active={coinOpen}
-        onclick={toggleCoin}
-        title={coinOpen ? "Put the coin away" : "Bring out the coin"}
+        class:active={activeTool === "coin"}
+        onclick={() => toggleTool("coin")}
+        title={activeTool === "coin" ? "Put the coin away" : "Bring out the coin"}
       >Coin</button>
+      <button
+        class="quiet"
+        class:active={activeTool === "cards"}
+        onclick={() => toggleTool("cards")}
+        title={activeTool === "cards" ? "Put the cards away" : "Bring out the cards"}
+      >Cards</button>
       <span class="pages">{pageLabel}</span>
     </div>
-    <DiceTray open={diceOpen} onclose={() => (diceOpen = false)} />
-    <CoinFlip open={coinOpen} onclose={() => (coinOpen = false)} />
+    <DiceTray open={activeTool === "dice"} onclose={() => (activeTool = null)} />
+    <CoinFlip open={activeTool === "coin"} onclose={() => (activeTool = null)} />
+    <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
   {:else}
     <div class="empty">
       <h1>Solo RPG Companion</h1>
