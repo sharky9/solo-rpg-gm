@@ -1,11 +1,9 @@
 <script lang="ts">
   import * as pdfjs from "pdfjs-dist";
-  import workerURL from "pdfjs-dist/build/pdf.worker.min.mjs?url";
   import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
   import { onDestroy } from "svelte";
   import * as perf from "./perf";
-
-  pdfjs.GlobalWorkerOptions.workerSrc = workerURL;
+  import { worker } from "./pdfWorker";
 
   let {
     data,
@@ -61,6 +59,7 @@
 
     // pdf.js transfers the buffer to its worker, so hand it a copy
     loadingTask = pdfjs.getDocument({
+      worker,
       data: bytes.slice(),
       wasmUrl: "/pdfjs/wasm/",
       iccUrl: "/pdfjs/iccs/",
