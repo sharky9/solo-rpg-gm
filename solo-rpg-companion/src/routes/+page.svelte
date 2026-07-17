@@ -9,12 +9,20 @@
   import TarotDeck from "$lib/TarotDeck.svelte";
   import BookmarkRail from "$lib/BookmarkRail.svelte";
   import AudioPlayer from "$lib/AudioPlayer.svelte";
+  import * as perf from "$lib/perf";
 
   type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
   let bookPath = $state("");
+  // true from the moment a pick resolves until page 1 renders (or the load fails)
+  let loading = $state(false);
+  // true while the *displayed* document is readable — gates chrome/rail so a
+  // re-open doesn't unmount controls floating over the still-visible old book
+  let viewerReady = $state(false);
+  let loadError = $state("");
+  let openSeq = 0; // a newer pick supersedes any load still in flight
   let viewer: PdfViewer | undefined = $state();
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
@@ -50,19 +58,60 @@
       multiple: false,
     });
     if (typeof path !== "string") return;
-    pdfData = await readFile(path);
+    const seq = ++openSeq;
+    const name = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
+    loadError = "";
+    loading = true;
+    perf.beginLoad();
+
+    let bytes: Uint8Array;
+    try {
+      bytes = await readFile(path);
+    } catch {
+      if (seq !== openSeq) return; // superseded by a newer pick
+      // a working book stays open on a failed re-open; first opens fall back
+      loadError = `Couldn't read “${name}” — the file may be missing or locked.`;
+      loading = false;
+      return;
+    }
+    if (seq !== openSeq) return;
+    perf.mark("file-read");
+
+    // late-swap: data, path, and title change together, only once the read
+    // succeeded, so the chrome never names a book that isn't loading
+    viewerReady = false;
+    pdfData = bytes;
     bookPath = path;
-    bookName = path.split(/[\\/]/).pop()?.replace(/\.pdf$/i, "") ?? "Untitled";
+    bookName = name;
+  }
+
+  function onViewerReady() {
+    loading = false;
+    viewerReady = true;
+  }
+
+  function onViewerError(message: string) {
+    // parse/render failure: the previous document is already torn down,
+    // so fall back to the empty state with the error inline
+    loadError = message;
+    loading = false;
+    viewerReady = false;
+    pdfData = null;
+    bookPath = "";
+    bookName = "";
   }
 </script>
 
 <main>
   {#if pdfData}
-    <PdfViewer bind:this={viewer} data={pdfData} />
+    <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
     <div class="chrome top">
       <button class="quiet" onclick={openBook} title="Open another gamebook">Open</button>
       <span class="title">{bookName}</span>
+      {#if loading}<span class="loading-note">Loading…</span>{/if}
+      {#if loadError && !loading}<span class="error">{loadError}</span>{/if}
     </div>
+    {#if viewerReady}
     <div class="chrome bottom">
       <button class="quiet" onclick={() => viewer?.zoomOut()} aria-label="Zoom out">−</button>
       <button class="quiet" onclick={() => viewer?.setZoom(100)} title="Fit width">Fit</button>
@@ -105,23 +154,31 @@
       >Audio</button>
       <span class="pages">{pageLabel}</span>
     </div>
+    {/if}
     <DiceTray open={activeTool === "dice"} onclose={() => (activeTool = null)} />
     <CoinFlip open={activeTool === "coin"} onclose={() => (activeTool = null)} />
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
     <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
     <AudioPlayer open={activeTool === "audio"} onclose={() => (activeTool = null)} />
-    <BookmarkRail
-      bookKey={bookPath}
-      currentPage={pageNum}
-      spread={spreadOn}
-      totalPages={pageTotal}
-      onjump={(p) => viewer?.goToPage(p)}
-    />
+    {#if viewerReady}
+      <BookmarkRail
+        bookKey={bookPath}
+        currentPage={pageNum}
+        spread={spreadOn}
+        totalPages={pageTotal}
+        onjump={(p) => viewer?.goToPage(p)}
+      />
+    {/if}
   {:else}
     <div class="empty">
-      <h1>Solo RPG Companion</h1>
-      <p>Open a gamebook to lay the table.</p>
-      <button class="primary" onclick={openBook}>Open a PDF</button>
+      {#if loading}
+        <div class="skeleton" role="status" aria-label="Loading book"></div>
+      {:else}
+        <h1>Solo RPG Companion</h1>
+        <p>Open a gamebook to lay the table.</p>
+        {#if loadError}<p class="error">{loadError}</p>{/if}
+        <button class="primary" onclick={openBook}>Open a PDF</button>
+      {/if}
     </div>
   {/if}
 </main>
@@ -156,6 +213,44 @@
   .empty p {
     color: #9c9384;
     margin: 0 0 1.2rem;
+  }
+
+  /* page-shaped placeholder while the book loads */
+  .skeleton {
+    width: min(46vh, 60vw);
+    aspect-ratio: 3 / 4;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; opacity: 0.8; }
+  }
+
+  .loading-note {
+    color: #9c9384;
+    font-size: 0.85rem;
+    padding-right: 0.6rem;
+  }
+  .error {
+    color: #e0897f; /* matches AudioPlayer's error red */
+    font-size: 0.85rem;
+    margin: 0 0 1rem;
+    max-width: 46ch;
+    text-align: center;
+  }
+  .chrome .error {
+    margin: 0;
+    padding-right: 0.6rem;
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .primary {
