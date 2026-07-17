@@ -24,7 +24,7 @@ A personal desktop companion app for playing solo tabletop RPGs. The guiding sta
 |---|---|
 | PDF viewer + bookmarks | Full-screen, right-edge bookmark tabs, multiple documents |
 | Dice roller | Functions like Google's search dice widget (see spec below) |
-| Playing-card deck | |
+| Playing-card deck | 52 cards + optional jokers (toggle applies on next shuffle). **Session-only, no persistence** — decided 2026-07-17, overriding the earlier "decks with memory" recommendation; revisit if depletion-across-sessions starts to matter in play |
 | Tarot deck | |
 | Coin flipper | Standalone tool (like Google's coin flip), not part of the dice tray — decided 2026-07-17 |
 | Audio player | Folder-based soundtrack playback (see spec below) |
@@ -45,7 +45,7 @@ A personal desktop companion app for playing solo tabletop RPGs. The guiding sta
 
 ### Recommended, not yet committed
 - **Roll & draw history** — an ephemeral session ledger of every roll/draw with timestamps. Not a journal: it's a record of the tools, there to glance at while writing the story on paper. Strongest idea from the ideation pass.
-- **Decks with memory** — shuffle order, drawn cards, and discards persist across app launches; reshuffle only on deliberate action. A correctness requirement for depletion-based card-prompt games; must be decided before deck UI is built.
+- **Decks with memory** — shuffle order, drawn cards, and discards persist across app launches; reshuffle only on deliberate action. A correctness requirement for depletion-based card-prompt games. *Decided against for now (2026-07-17): the playing-card deck shipped session-only. Revisit for the tarot deck or if cross-session depletion matters in play.*
 - **Resume where I left off** — reopening restores last page, open documents, deck state, and audio.
 - **Pinned region clips** — rubber-band a rules table or stat block into a small overlay for "this table AND my current page" moments.
 - **Custom random tables** — plain-text table format rollable from the same drawer as the dice; how the app supports future games.
@@ -86,6 +86,7 @@ Scaffolded at `solo-rpg-companion/` (Tauri 2 + SvelteKit + TypeScript, via creat
 - `src/routes/+page.svelte` — app shell: open-PDF dialog, floating low-opacity chrome (top-left: open/title; bottom-center: zoom + page count) that fades in on hover — first pass at the "chrome stays out of the book's way" principle.
 - `src/lib/DiceTray.svelte` — the dice roller, shipped per the spec above: d4–d20 palette, mixed pools with formula + total, 2D SVG dice, staggered tumble/flicker/count-up animation, crypto-RNG results generated before the animation plays, reduced-motion = instant results. Opens from a "Dice" button in the bottom chrome as an overlay above it (tools-over-the-page pattern); Escape or the button dismisses it; the pool persists while closed. First tool built on the bottom-edge drawer concept.
 - `src/lib/CoinFlip.svelte` — standalone coin flipper: one big SVG coin, tap it (or Flip) to flip, rotateY spin + H/T flicker landing on a crypto-RNG result, reduced-motion = instant. Opens from a "Coin" button in the bottom chrome; opening it closes the dice tray and vice versa (both tools share the spot above the chrome).
+- `src/lib/CardDeck.svelte` — the playing-card deck: crypto Fisher–Yates shuffle (whole order decided up front, result-first), tap the pile to draw with a rotateY flip-in, corner-index + center-pip card faces, remaining/drawn counts, deliberate Shuffle button, jokers toggle (applies on next shuffle). Session-only state; persists while the tray is closed but not across launches. Chrome refactored to a single `activeTool` switch — Dice/Coin/Cards buttons, one tool open at a time.
 - `pdfjs-assets` npm script rewritten in Node (was Unix `rm`/`cp`, which broke `npm run dev` on Windows).
 - Rust side: `tauri-plugin-dialog` + `tauri-plugin-fs` registered; capability grants file reads under `$HOME` and `/Volumes`.
 - Run with `npm run tauri dev` inside `solo-rpg-companion/`.
