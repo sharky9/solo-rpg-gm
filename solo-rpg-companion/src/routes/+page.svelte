@@ -9,6 +9,7 @@
   import TarotDeck from "$lib/TarotDeck.svelte";
   import BookmarkRail from "$lib/BookmarkRail.svelte";
   import AudioPlayer from "$lib/AudioPlayer.svelte";
+  import ReferencePane from "$lib/ReferencePane.svelte";
   import * as perf from "$lib/perf";
 
   type Tool = "dice" | "coin" | "cards" | "tarot" | "audio";
@@ -29,22 +30,37 @@
   let activeTool = $state<Tool | null>(null);
   // split reader: book pane narrows to ~55%, reference pane takes the rest
   let splitOpen = $state(false);
+  // the reference doc shown in the pane; its failures never touch book state
+  let refDoc = $state<{ name: string; path: string } | null>(null);
 
   function toggleTool(tool: Tool) {
     activeTool = activeTool === tool ? null : tool;
   }
 
-  // the reference fan will call this (U5); nothing in the UI triggers it yet
   function toggleSplit(open: boolean) {
     splitOpen = open;
     // refit after the pane width lands — the viewer reads clientWidth directly
     requestAnimationFrame(() => viewer?.refit());
   }
-  void toggleSplit; // referenced to keep check clean until the fan wires it up
+
+  // the reference fan will call this (U5); nothing in the UI triggers it yet
+  function openReference(doc: { name: string; path: string }) {
+    refDoc = doc;
+    toggleSplit(true);
+  }
+  void openReference; // referenced to keep check clean until the fan wires it up
+
+  function closeReference() {
+    refDoc = null;
+    toggleSplit(false);
+  }
 
   // the split can't outlive a readable book (R17/R18 — U6 refines swap timing)
   $effect(() => {
-    if (!viewerReady && splitOpen) splitOpen = false;
+    if (!viewerReady && splitOpen) {
+      splitOpen = false;
+      refDoc = null;
+    }
   });
 
   function toggleSpread() {
@@ -134,9 +150,10 @@
         />
       {/if}
     </div>
-    {#if splitOpen}
-      <!-- reference viewer lands here (U4) -->
-      <div class="reference-pane"></div>
+    {#if splitOpen && refDoc}
+      <div class="reference-pane">
+        <ReferencePane path={refDoc.path} name={refDoc.name} onclose={closeReference} />
+      </div>
     {/if}
     <div class="chrome top">
       <button class="quiet" onclick={openBook} title="Open another gamebook">Open</button>
