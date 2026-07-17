@@ -6,8 +6,9 @@
   import DiceTray from "$lib/DiceTray.svelte";
   import CoinFlip from "$lib/CoinFlip.svelte";
   import CardDeck from "$lib/CardDeck.svelte";
+  import TarotDeck from "$lib/TarotDeck.svelte";
 
-  type Tool = "dice" | "coin" | "cards";
+  type Tool = "dice" | "coin" | "cards" | "tarot";
 
   let pdfData: Uint8Array | null = $state(null);
   let bookName = $state("");
@@ -82,11 +83,18 @@
         onclick={() => toggleTool("cards")}
         title={activeTool === "cards" ? "Put the cards away" : "Bring out the cards"}
       >Cards</button>
+      <button
+        class="quiet"
+        class:active={activeTool === "tarot"}
+        onclick={() => toggleTool("tarot")}
+        title={activeTool === "tarot" ? "Put the tarot away" : "Bring out the tarot"}
+      >Tarot</button>
       <span class="pages">{pageLabel}</span>
     </div>
     <DiceTray open={activeTool === "dice"} onclose={() => (activeTool = null)} />
     <CoinFlip open={activeTool === "coin"} onclose={() => (activeTool = null)} />
     <CardDeck open={activeTool === "cards"} onclose={() => (activeTool = null)} />
+    <TarotDeck open={activeTool === "tarot"} onclose={() => (activeTool = null)} />
   {:else}
     <div class="empty">
       <h1>Solo RPG Companion</h1>
