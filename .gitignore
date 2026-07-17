@@ -1,0 +1,11 @@
+# Purchased game content — copyrighted, never commit
+01 - Artefact Play Materials/
+05 - Artefact Soundtrack (Highest Quality)/
+*.pdf
+*.mp3
+*.flac
+*.wav
+*.m4a
+
+# macOS
+.DS_Store
