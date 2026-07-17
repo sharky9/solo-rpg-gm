@@ -18,6 +18,7 @@
   // here and never touches the book's state
   let error = $state("");
   let openSeq = 0; // a newer path supersedes any read still in flight
+  let bytesSeq = 0; // which selection the mounted viewer's callbacks belong to
 
   $effect(() => {
     void openDoc(path, name);
@@ -42,13 +43,18 @@
     if (seq !== openSeq) return;
     // swapping data reuses the mounted viewer — its load() tears down the old doc
     bytes = read;
+    bytesSeq = seq;
   }
 
+  // both callbacks report on the last bytes handed over; a late signal from an
+  // outgoing document must not clobber a newer selection still reading (R15)
   function onViewerReady() {
+    if (bytesSeq !== openSeq) return;
     loading = false;
   }
 
   function onViewerError(message: string) {
+    if (bytesSeq !== openSeq) return;
     error = message;
     loading = false;
     bytes = null;
@@ -59,6 +65,7 @@
   {#if error}
     <div class="pane-error">
       <p class="error">{error}</p>
+      <button class="quiet" onclick={() => void openDoc(path, name)}>Try again</button>
       <button class="quiet" onclick={onclose}>Close</button>
     </div>
   {:else}

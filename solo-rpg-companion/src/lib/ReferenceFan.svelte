@@ -24,6 +24,15 @@
   let cardEls: (HTMLButtonElement | undefined)[] = $state([]);
   let addEl = $state<HTMLButtonElement | undefined>();
 
+  // a different book's fan must never act on the old book's cached list —
+  // clear it and supersede anything in flight the moment the key changes
+  $effect(() => {
+    bookKey;
+    loadSeq++;
+    docs = [];
+    missing = new Set();
+  });
+
   $effect(() => {
     if (!open) return;
     void refresh(bookKey);
@@ -53,11 +62,18 @@
   }
 
   async function probeOne(path: string): Promise<boolean> {
+    let exists: typeof import("@tauri-apps/plugin-fs").exists;
     try {
-      const { exists } = await import("@tauri-apps/plugin-fs");
+      ({ exists } = await import("@tauri-apps/plugin-fs"));
+    } catch {
+      return true; // browser dev — no fs plugin, never block the fan (R12)
+    }
+    try {
       return await exists(path);
     } catch {
-      return true; // browser dev / probe failure: never block the fan (R12)
+      // a rejected probe (e.g. outside the app's fs scope) would fail to read
+      // on select anyway — badge it rather than promising a doc we can't open
+      return false;
     }
   }
 
@@ -70,6 +86,7 @@
   }
 
   function remove(doc: RefDoc) {
+    loadSeq++; // an in-flight refresh must not resurrect the removed card
     docs = docs.filter((d) => d.path !== doc.path);
     void saveRefDocs(bookKey, $state.snapshot(docs));
     onremove?.(doc.path);
@@ -92,7 +109,7 @@
     const known = new Set(docs.map((d) => d.path));
     const fresh = paths
       .filter((p) => !known.has(p))
-      .map((p) => ({ name: refDocName(p), path: p }));
+      .map((p) => ({ name: refDocName(p) || "Untitled", path: p }));
     if (!fresh.length) return; // duplicates only — nothing changes (R19)
     docs = [...docs, ...fresh];
     void saveRefDocs(bookKey, $state.snapshot(docs));
@@ -118,14 +135,7 @@
           <span class="doc-name">{doc.name}</span>
           {#if missing.has(doc.path)}<span class="badge">missing</span>{/if}
         </button>
-        <button
-          class="del"
-          onclick={(e) => {
-            e.stopPropagation();
-            remove(doc);
-          }}
-          aria-label={`Remove ${doc.name}`}
-        >✕</button>
+        <button class="del" onclick={() => remove(doc)} aria-label={`Remove ${doc.name}`}>✕</button>
       </div>
     {/each}
     <div class="card add-card" style:--tilt="0deg">

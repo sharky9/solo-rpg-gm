@@ -78,18 +78,21 @@
     }
   });
 
-  // One Escape owner (R16): dismisses exactly one layer per press, with the
-  // bookmark rail's popover/rename first (it holds keyboard focus), then the
-  // fan, then the open tool drawer, then the split pane. Registered on the
-  // CAPTURE phase so it runs before the tools' own bubble-phase window
-  // listeners — stopPropagation() below is what prevents a double-dismiss.
-  // (Capture isn't expressible via <svelte:window> attributes.)
+  // One Escape owner (R16): dismisses exactly one layer per press — the fan
+  // first (its backdrop covers everything), then the bookmark rail's
+  // popover/rename, then the open tool drawer, then the split pane. The
+  // coordinator cancels the rail edit itself rather than letting the press
+  // propagate: a propagated Escape reaches every tool's window listener too
+  // and would dismiss two layers at once. Registered on the CAPTURE phase so
+  // it runs before those bubble-phase listeners — stopPropagation() below is
+  // what prevents a double-dismiss. (Capture isn't expressible via
+  // <svelte:window> attributes.)
   function onEscapeCapture(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
-    // the rail's own window listener owns this press — let it propagate
-    if (rail?.isEditing()) return;
     if (fanOpen) {
       fanOpen = false;
+    } else if (rail?.isEditing()) {
+      rail.cancelEditing();
     } else if (activeTool) {
       activeTool = null;
     } else if (splitOpen) {

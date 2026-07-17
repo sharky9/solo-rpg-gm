@@ -62,7 +62,10 @@
     // Published on workerQueue so a remounted viewer instance waits too.
     if (prev) {
       const settled = prev.destroy().catch(() => {});
-      workerQueue.settled = settled;
+      // chain, never replace: two live viewers (book + reference pane) can tear
+      // down in the same flush, and an overwritten slot would let getDocument
+      // run while the other instance's destroy is still in flight on the port
+      workerQueue.settled = Promise.allSettled([workerQueue.settled, settled]).then(() => {});
       await settled;
     }
   }

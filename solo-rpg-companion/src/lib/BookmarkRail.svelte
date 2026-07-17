@@ -86,6 +86,13 @@
     return adding || editing !== null;
   }
 
+  // the coordinator dismisses the popover/rename itself (with stopPropagation),
+  // so exactly one layer closes per press even with a tool drawer also open
+  export function cancelEditing() {
+    editing = null;
+    adding = false;
+  }
+
   function onkeydown(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
     if (editing) {
