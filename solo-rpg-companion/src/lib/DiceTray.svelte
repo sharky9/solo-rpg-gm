@@ -373,21 +373,25 @@
     outline: 2px solid #c9a35c;
     outline-offset: 2px;
   }
+  /* overlaps the panel corner like a badge — same border/backdrop as the
+     panel so it reads as a chip sitting on top of it */
   .dismiss {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 26px;
-    height: 26px;
+    top: -11px;
+    right: -11px;
+    width: 28px;
+    height: 28px;
     display: grid;
     place-items: center;
-    border: 0;
+    border: 1px solid rgba(232, 226, 213, 0.18);
     border-radius: 50%;
-    background: none;
+    background: #2c2723;
     color: #9c9384;
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    transition: background 0.15s, color 0.15s;
   }
   .dismiss svg { width: 14px; height: 14px; }
-  .dismiss:hover { background: rgba(255, 255, 255, 0.08); color: #e8e2d5; }
+  .dismiss:hover { background: #3a332c; color: #e8e2d5; }
   .dismiss:focus-visible { outline: 2px solid #c9a35c; outline-offset: 2px; }
 </style>
