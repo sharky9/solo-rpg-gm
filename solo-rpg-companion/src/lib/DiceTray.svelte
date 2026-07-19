@@ -149,6 +149,11 @@
 
 {#if open}
   <section class="dice-tray" aria-label="Dice tray">
+    <button class="dismiss" onclick={() => onclose?.()} title="Close" aria-label="Close the dice tray">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </button>
     <header>
       <span class="total" aria-live="polite">{totalLabel}</span>
       <span class="formula">{formula}</span>
@@ -368,4 +373,21 @@
     outline: 2px solid #c9a35c;
     outline-offset: 2px;
   }
+  .dismiss {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: #9c9384;
+    cursor: pointer;
+  }
+  .dismiss svg { width: 14px; height: 14px; }
+  .dismiss:hover { background: rgba(255, 255, 255, 0.08); color: #e8e2d5; }
+  .dismiss:focus-visible { outline: 2px solid #c9a35c; outline-offset: 2px; }
 </style>
