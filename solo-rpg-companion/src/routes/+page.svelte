@@ -115,13 +115,11 @@
   }
 
   // poll the viewer for chrome display (cheap; avoids cross-component stores for now)
-  let pageLabel = $state("");
   let pageNum = $state(1);
   let pageTotal = $state(0);
   const poll = setInterval(() => {
     if (viewer && pdfData) {
       const { current, total } = viewer.pageInfo();
-      pageLabel = total ? `${current} / ${total}` : "";
       pageNum = current;
       pageTotal = total;
     }
@@ -227,47 +225,101 @@
       {#if loadError && !loading}<span class="error">{loadError}</span>{/if}
     </div>
     {#if viewerReady}
-    <div class="chrome bottom">
-      <button class="quiet" onclick={() => viewer?.zoomOut()} aria-label="Zoom out">−</button>
-      <button class="quiet" onclick={() => viewer?.setZoom(100)} title="Fit width">Fit</button>
-      <button class="quiet" onclick={() => viewer?.zoomIn()} aria-label="Zoom in">+</button>
+    <div class="chrome bottom" role="toolbar" aria-label="Table tools">
+      <button class="act" onclick={() => viewer?.zoomOut()} title="Zoom out" aria-label="Zoom out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2M8.5 11h5" />
+        </svg>
+      </button>
+      <button class="act" onclick={() => viewer?.setZoom(100)} title="Fit width" aria-label="Fit width">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" />
+        </svg>
+      </button>
+      <button class="act" onclick={() => viewer?.zoomIn()} title="Zoom in" aria-label="Zoom in">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2M8.5 11h5M11 8.5v5" />
+        </svg>
+      </button>
       <button
-        class="quiet"
+        class="act"
         class:active={spreadOn}
         onclick={toggleSpread}
         title={spreadOn ? "Single page view" : "Two-page book view"}
-      >Spread</button>
+        aria-label="Toggle two-page spread"
+        aria-pressed={spreadOn}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 6c-1.6-1.3-3.8-2-6.5-2H4v14h1.5c2.7 0 4.9.7 6.5 2 1.6-1.3 3.8-2 6.5-2H20V4h-1.5c-2.7 0-4.9.7-6.5 2Z" /><path d="M12 6v14" />
+        </svg>
+      </button>
+      <div class="divider"></div>
       <button
-        class="quiet"
-        class:active={activeTool === "dice"}
+        class="tab"
+        class:open={activeTool === "dice"}
         onclick={() => toggleTool("dice")}
         title={activeTool === "dice" ? "Put the dice away" : "Bring out the dice"}
-      >Dice</button>
+        aria-pressed={activeTool === "dice"}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="3.5" />
+          <circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none" />
+        </svg>
+        <span class="lbl"><span>Dice</span></span>
+      </button>
       <button
-        class="quiet"
-        class:active={activeTool === "coin"}
+        class="tab"
+        class:open={activeTool === "coin"}
         onclick={() => toggleTool("coin")}
         title={activeTool === "coin" ? "Put the coin away" : "Bring out the coin"}
-      >Coin</button>
+        aria-pressed={activeTool === "coin"}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4.5" />
+        </svg>
+        <span class="lbl"><span>Coin</span></span>
+      </button>
       <button
-        class="quiet"
-        class:active={activeTool === "cards"}
+        class="tab"
+        class:open={activeTool === "cards"}
         onclick={() => toggleTool("cards")}
         title={activeTool === "cards" ? "Put the cards away" : "Bring out the cards"}
-      >Cards</button>
+        aria-pressed={activeTool === "cards"}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+          <rect x="8.5" y="3.5" width="10" height="14" rx="1.8" transform="rotate(8 13.5 10.5)" />
+          <rect x="5" y="6.5" width="10" height="14" rx="1.8" />
+        </svg>
+        <span class="lbl"><span>Cards</span></span>
+      </button>
       <button
-        class="quiet"
-        class:active={activeTool === "tarot"}
+        class="tab"
+        class:open={activeTool === "tarot"}
         onclick={() => toggleTool("tarot")}
         title={activeTool === "tarot" ? "Put the tarot away" : "Bring out the tarot"}
-      >Tarot</button>
+        aria-pressed={activeTool === "tarot"}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+          <rect x="7" y="3.5" width="10" height="17" rx="1.8" />
+          <path d="M12 8.2l1.1 2.2 2.4.35-1.75 1.7.4 2.4L12 13.7l-2.15 1.15.4-2.4-1.75-1.7 2.4-.35Z" />
+        </svg>
+        <span class="lbl"><span>Tarot</span></span>
+      </button>
       <button
-        class="quiet"
-        class:active={activeTool === "audio"}
+        class="tab"
+        class:open={activeTool === "audio"}
         onclick={() => toggleTool("audio")}
         title={activeTool === "audio" ? "Close the audio drawer" : "Open the audio drawer"}
-      >Audio</button>
-      <span class="pages">{pageLabel}</span>
+        aria-pressed={activeTool === "audio"}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 10v4h3.5L13 18.5v-13L7.5 10Z" /><path d="M16.5 9.5a4 4 0 0 1 0 5M19 7.5a7.2 7.2 0 0 1 0 9" />
+        </svg>
+        <span class="lbl"><span>Audio</span></span>
+      </button>
     </div>
     {/if}
     <DiceTray open={activeTool === "dice"} onclose={() => (activeTool = null)} />
@@ -453,8 +505,18 @@
     transition: opacity 0.15s;
   }
   .chrome:hover { opacity: 1; }
+  .chrome:focus-within { opacity: 1; }
   .chrome.top { top: 12px; left: 12px; }
-  .chrome.bottom { bottom: 12px; left: 50%; transform: translateX(-50%); }
+  .chrome.bottom {
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 4px;
+    padding: 8px;
+    border-radius: 26px;
+    border: 1px solid rgba(232, 226, 213, 0.07);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  }
 
   .quiet {
     background: none;
@@ -467,10 +529,86 @@
     cursor: pointer;
   }
   .quiet:hover { background: rgba(255, 255, 255, 0.08); }
-  .quiet.active { background: rgba(201, 163, 92, 0.22); color: #e4c37e; }
   .quiet:focus-visible, .primary:focus-visible {
     outline: 2px solid #c9a35c;
     outline-offset: 2px;
+  }
+
+  .divider {
+    width: 1px;
+    align-self: stretch;
+    margin: 6px 3px;
+    background: rgba(232, 226, 213, 0.12);
+  }
+
+  /* compact icon actions (zoom cluster + spread) — never expand */
+  .act {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 18px;
+    background: none;
+    color: #9c9384;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .act svg { width: 20px; height: 20px; display: block; }
+  .act:hover { background: rgba(255, 255, 255, 0.08); color: #e8e2d5; }
+  .act.active { background: rgba(201, 163, 92, 0.22); color: #e4c37e; }
+
+  /* expandable tool tabs: icon-only at rest, the active one springs open
+     into a labeled pill. Expansion animates grid-template-columns (0fr→1fr)
+     so the label reveals without measuring text width. */
+  .tab {
+    display: grid;
+    grid-template-columns: 20px 0fr;
+    align-items: center;
+    height: 36px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 18px;
+    background: none;
+    color: #9c9384;
+    font: 600 0.86rem/1 inherit;
+    font-family: inherit;
+    cursor: pointer;
+    overflow: hidden;
+    transition:
+      grid-template-columns 0.42s cubic-bezier(0.3, 1.35, 0.45, 1),
+      padding 0.42s cubic-bezier(0.3, 1.35, 0.45, 1),
+      background 0.25s ease,
+      color 0.2s ease;
+  }
+  .tab svg { width: 20px; height: 20px; display: block; }
+  .tab .lbl {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.16s ease-out, transform 0.16s ease-out;
+  }
+  .tab .lbl > span { padding-left: 7px; }
+  .tab:hover { background: rgba(255, 255, 255, 0.08); color: #e8e2d5; }
+  .tab.open {
+    grid-template-columns: 20px 1fr;
+    padding: 0 14px 0 10px;
+    background: rgba(201, 163, 92, 0.22);
+    color: #e4c37e;
+  }
+  .tab.open .lbl {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 0.3s ease 0.1s, transform 0.34s cubic-bezier(0.3, 1.3, 0.5, 1) 0.06s;
+  }
+  .act:focus-visible, .tab:focus-visible {
+    outline: 2px solid #c9a35c;
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .act, .tab, .tab .lbl { transition: none; }
   }
 
   .title {
@@ -481,11 +619,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .pages {
-    color: #9c9384;
-    font-size: 0.85rem;
-    font-variant-numeric: tabular-nums;
-    padding: 0 0.7rem;
   }
 </style>
