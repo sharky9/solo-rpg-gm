@@ -1,6 +1,7 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { readFile } from "@tauri-apps/plugin-fs";
+  import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onDestroy, onMount } from "svelte";
   import PdfViewer from "$lib/PdfViewer.svelte";
   import DiceTray from "$lib/DiceTray.svelte";
@@ -9,7 +10,6 @@
   import TarotDeck from "$lib/TarotDeck.svelte";
   import BookmarkRail from "$lib/BookmarkRail.svelte";
   import AudioPlayer from "$lib/AudioPlayer.svelte";
-  import ReferencePane from "$lib/ReferencePane.svelte";
   import ReferenceFan from "$lib/ReferenceFan.svelte";
   import { refDocName, type RefDoc } from "$lib/referenceDocs";
   import * as perf from "$lib/perf";
@@ -31,10 +31,6 @@
   let spreadOn = $state(false);
   // the tools share the spot above the chrome — one open at a time
   let activeTool = $state<Tool | null>(null);
-  // the reference doc shown in the pane; its failures never touch book state.
-  // While one is open, the book pane narrows to ~55% (split reader).
-  let refDoc = $state<RefDoc | null>(null);
-  let splitOpen = $derived(refDoc !== null);
   // the paper-stack fan of this book's reference documents
   let fanOpen = $state(false);
 
@@ -42,45 +38,52 @@
     activeTool = activeTool === tool ? null : tool;
   }
 
-  // refit after the pane width lands — the viewer reads clientWidth directly
-  function scheduleRefit() {
-    requestAnimationFrame(() => viewer?.refit());
+  // each reference doc opens in its own OS window with independent viewing
+  // controls; the window label is derived from the path so reselecting a doc
+  // focuses its existing window instead of spawning a duplicate. Labels only
+  // allow [a-zA-Z0-9-/:_], so the path is hashed rather than encoded.
+  function refLabel(path: string): string {
+    let h = 5381; // djb2
+    for (let i = 0; i < path.length; i++) h = ((h << 5) + h + path.charCodeAt(i)) >>> 0;
+    return `ref-${h.toString(36)}`;
   }
 
-  function openReference(doc: RefDoc) {
-    refDoc = doc;
-    scheduleRefit();
+  async function openReference(doc: RefDoc) {
+    const label = refLabel(doc.path);
+    const existing = await WebviewWindow.getByLabel(label);
+    if (existing) {
+      await existing.setFocus();
+      return;
+    }
+    new WebviewWindow(label, {
+      url: `/reference?path=${encodeURIComponent(doc.path)}&name=${encodeURIComponent(doc.name)}`,
+      title: doc.name,
+      width: 760,
+      height: 940,
+    });
   }
 
-  function closeReference() {
-    refDoc = null;
-    scheduleRefit();
-  }
-
-  // reselecting the open doc just dismisses the fan — no reload (R19)
   function onFanSelect(doc: RefDoc) {
     fanOpen = false;
-    if (doc.path !== refDoc?.path) openReference(doc);
+    void openReference(doc);
   }
 
-  // removing the doc that's open in the pane also closes the pane (R19)
-  function onFanRemove(path: string) {
-    if (path === refDoc?.path) closeReference();
+  // removing a doc from the fan also closes its window if one is open (R19)
+  async function onFanRemove(path: string) {
+    const w = await WebviewWindow.getByLabel(refLabel(path));
+    await w?.close();
   }
 
-  // safety net: the split and fan can't outlive a readable book (R17). The
-  // authoritative close on book-swap happens in openBook's late-swap block;
-  // this catches any other path that drops viewerReady (same values — no fight).
+  // safety net: the fan can't outlive a readable book (R17). The authoritative
+  // close on book-swap happens in openBook's late-swap block; this catches any
+  // other path that drops viewerReady (same value — no fight).
   $effect(() => {
-    if (!viewerReady && (refDoc || fanOpen)) {
-      refDoc = null;
-      fanOpen = false;
-    }
+    if (!viewerReady && fanOpen) fanOpen = false;
   });
 
   // One Escape owner (R16): dismisses exactly one layer per press — the fan
   // first (its backdrop covers everything), then the bookmark rail's
-  // popover/rename, then the open tool drawer, then the split pane. The
+  // popover/rename, then the open tool drawer. The
   // coordinator cancels the rail edit itself rather than letting the press
   // propagate: a propagated Escape reaches every tool's window listener too
   // and would dismiss two layers at once. Registered on the CAPTURE phase so
@@ -95,8 +98,6 @@
       rail.cancelEditing();
     } else if (activeTool) {
       activeTool = null;
-    } else if (splitOpen) {
-      closeReference();
     } else {
       return; // nothing open — the tools' listeners are gated on `open` anyway
     }
@@ -154,11 +155,11 @@
 
     // late-swap: data, path, and title change together, only once the read
     // succeeded, so the chrome never names a book that isn't loading. The fan
-    // and split belong to the outgoing book, so they close here too (R18) —
-    // a cancelled dialog or failed read above never touches them.
+    // belongs to the outgoing book, so it closes here too (R18) — a cancelled
+    // dialog or failed read above never touches it. Reference windows are
+    // independent of the book and stay open.
     viewerReady = false;
     fanOpen = false;
-    refDoc = null;
     pdfData = bytes;
     bookPath = path;
     bookName = name;
@@ -184,9 +185,8 @@
 <main>
   {#if pdfData}
     <!-- the book viewer must never remount — its buffer is transferred to the
-         pdf.js worker, so a recreate would re-load a detached buffer and fail.
-         The split only ever changes this pane's width. -->
-    <div class="book-pane" class:split={splitOpen}>
+         pdf.js worker, so a recreate would re-load a detached buffer and fail. -->
+    <div class="book-pane">
       <PdfViewer bind:this={viewer} data={pdfData} onready={onViewerReady} onerror={onViewerError} />
       {#if viewerReady}
         <BookmarkRail
@@ -197,8 +197,6 @@
           totalPages={pageTotal}
           onjump={(p) => viewer?.goToPage(p)}
         />
-        <!-- paper-stack: anchored to this pane's corner so it rides the divider
-             and never sits over the reference pane -->
         <button
           class="stack"
           class:active={fanOpen}
@@ -213,11 +211,6 @@
         </button>
       {/if}
     </div>
-    {#if refDoc}
-      <div class="reference-pane">
-        <ReferencePane path={refDoc.path} name={refDoc.name} onclose={closeReference} />
-      </div>
-    {/if}
     <div class="chrome top">
       <button class="quiet" onclick={openBook} title="Open another gamebook">Open</button>
       <span class="title">{bookName}</span>
@@ -362,25 +355,10 @@
     inset: 0;
   }
 
-  /* book pane: the rail's positioned ancestor, so its right-edge tabs land on
-     the divider when split. No width transition — refit() reads clientWidth
-     right after the toggle, and a mid-animation width would mis-fit. */
+  /* book pane: the rail's positioned ancestor */
   .book-pane {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-  }
-  .book-pane.split {
-    width: 55%;
-  }
-  .reference-pane {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    width: 45%;
+    inset: 0;
   }
 
   /* paper-stack icon: low-opacity chrome pinned to the book pane's corner */
